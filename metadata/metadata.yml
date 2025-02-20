@@ -1,0 +1,49 @@
+metadata_version: 1
+name: Hierarchical Gaussian Process-Based Bayesian Optimization for Materials Discovery
+  in High Entropy Alloy Spaces
+description: "Bayesian optimization (BO) is a powerful and data-efficient method for
+  iterative materials discovery and design, particularly valuable when prior knowledge
+  is limited, underlying functional relationships are complex\nor unknown, and the
+  cost of querying the materials space is significant. Traditional BO methodologies
+  typi\x02cally utilize conventional Gaussian Processes (cGPs) to model the relationships
+  between material inputs and\nproperties, as well as correlations within the input
+  space. However, cGP-BO approaches often fall short in\nmulti-objective optimization
+  scenarios, where they are unable to fully exploit correlations between distinct
+  material properties. Leveraging these correlations can significantly enhance the
+  discovery process, as information\nabout one property can inform and improve predictions
+  about others. This study addresses this limitation by\nemploying advanced kernel
+  structures to capture and model multi-dimensional property correlations through\nmulti-task
+  (MTGPs) or deep Gaussian Processes (DGPs), thus accelerating the discovery process.
+  We demonstrate the effectiveness of MTGP-BO and DGP-BO in rapidly and robustly solving
+  complex materials design\nchallenges that occur within the context of complex multi-objective
+  optimization over FCC FeCrNiCoCu high\nentropy alloy (HEA) spaces, where traditional
+  cGP-BO approaches fail. Furthermore, we highlight how the\ndifferential costs associated
+  with querying various material properties can be strategically leveraged to make
+  the\nmaterials discovery process more cost-efficient."
+tags:
+- Bayesian Optimization
+- Molecular dynamics
+- Deep gaussian Process
+- Multiobjective Optimization
+- Blackbox optimization
+- Automated experimentation
+- High Entropy Alloy
+authors:
+- name: sk md ahnaf akif alvi
+  affiliations:
+  - name: Texas A&M University
+- name: Jan Janssen
+  affiliations:
+  - name: MPIE
+- name: Danial Khatamsaz
+  affiliations:
+  - name: Texas A&M University
+- name: Danny Perez
+  affiliations:
+  - name: Los Alamos National Laboratory
+- name: Douglas Allaire
+  affiliations:
+  - name: Texas A&M University
+- name: Raymundo Arroyave
+  affiliations:
+  - name: Texas A&M University

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -ex
+
+
+
+
+python -u dgp-het-tec-MO-11-cuda.py "$@"
+
