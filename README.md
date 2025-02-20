@@ -1,6 +1,6 @@
 Associated Code repository for,
 
-#Hierarchical Gaussian Process-Based Bayesian Optimization for Materials Discovery in High Entropy Alloy Spaces
+# Hierarchical Gaussian Process-Based Bayesian Optimization for Materials Discovery in High Entropy Alloy Spaces
 
 sk md ahnaf akif alvi, Jan Janssen, Danial Khatamsaz, Danny Perez, Douglas Allaire, Raymundo Arroyave
 
