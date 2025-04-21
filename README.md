@@ -9,6 +9,6 @@ Bayesian optimization (BO) is a powerful and data-efficient method for iterative
 
 Link to Code Ocean Capsule : https://codeocean.com/capsule/9540168/tree
 
-Dataset DOI: 10.5281/zenodo.15149719
+Dataset DOI:  https://doi.org/10.5281/zenodo.15149719
 
 Paper DOI: https://doi.org/10.1016/j.actamat.2025.120908
