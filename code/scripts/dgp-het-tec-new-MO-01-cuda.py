@@ -1,101 +1,28 @@
-import pandas as pd
+import multiprocessing
+import os
 import sys
 
-index = sys.argv[1]
-file_out = sys.argv[0][:-3] + sys.argv[1]
-
-import torch
 import gpytorch
-
-# from matplotlib import pyplot as plt
 import numpy as np
-from pyDOE import *
-from dgp_bo.multiobjective import Pareto_finder
-import os
-
-# from mymod import call_Curtin_Model , call_kkr
-import multiprocessing
+import pandas as pd
+import torch
+from gpytorch.distributions import MultivariateNormal
+from gpytorch.kernels import MaternKernel, ScaleKernel
+from gpytorch.means import ConstantMean, LinearMean
+from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
+from gpytorch.models.deep_gps import DeepGP, DeepGPLayer
+from gpytorch.variational import (
+    CholeskyVariationalDistribution,
+    VariationalStrategy,
+)
 from joblib import Parallel, delayed
 
-# import matlab.engine
-# eng = matlab.engine.start_matlab()
-from dgp_bo.multiobjective import EHVI, HV_Calc
+from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 
-
-# from matplotlib import pyplot as plt
-from pyDOE import *
-
-
-
-# import matplotlib.pyplot as plt
-from gpytorch.distributions import MultivariateNormal
-
-# from acquisitionFuncdebug2 import expected_improvement
-
-# from matplotlib import pyplot as plt
-
-
-# import matplotlib.pyplot as plt
-
-from gpytorch.means import ConstantMean, LinearMean
-from gpytorch.kernels import MaternKernel, ScaleKernel
-from gpytorch.variational import (
-    VariationalStrategy,
-    CholeskyVariationalDistribution,
-)
-from gpytorch.models.deep_gps import DeepGPLayer, DeepGP
-from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
-# from matplotlib import pyplot as plt
-
-smoke_test = "CI" in os.environ
-
-
-def pos(x):
-    if x >= 0:
-        return x
-    elif x < 0:
-        return 0
-
-
-
-
-def dirlet5D(N_samp, dim):
-    from scipy.stats import dirichlet
-
-    out = []
-    n = 5
-    size = N_samp
-    alpha = np.ones(n)
-    samples = dirichlet.rvs(size=size, alpha=alpha)
-    # print(samples)
-    samples2 = np.asarray(
-        [
-            np.asarray(
-                [
-                    round(i * 32),
-                    round(j * 32),
-                    round(k * 32),
-                    round(l * 32),
-                    pos(
-                        32
-                        - round(i * 32)
-                        - round(j * 32)
-                        - round(k * 32)
-                        - round(l * 32)
-                    ),
-                ]
-            )
-            for i, j, k, l, m in samples
-        ]
-    )
-    for i, j, k, l, m in samples2:
-        if i / 32 + j / 32 + k / 32 + l / 32 + m / 32 == 1:
-            out.append(np.asarray([i, j, k, l, m]))
-        else:
-            out.append((dirlet5D(1, 5)[0]))
-            # print("********************exception**********")
-
-    return np.asarray(out)
+SMOKE_TEST = "CI" in os.environ
+index = sys.argv[1]
+file_out = sys.argv[0][:-3] + sys.argv[1]
 
 
 df = pd.read_hdf("5space-mor.h5")
@@ -180,7 +107,7 @@ class DGPLastLayer3(gpytorch.models.ApproximateGP):
     def __init__(self, num_inducing=16, linear_mean=True):
         num_latents = 10
         inducing_points = torch.randn(10, num_inducing, 3)
-        batch_shape = torch.Size([10])
+        torch.Size([10])
 
         variational_distribution = CholeskyVariationalDistribution(
             num_inducing_points=num_inducing, batch_shape=torch.Size([num_latents])
@@ -229,9 +156,8 @@ class DGPLastLayer3(gpytorch.models.ApproximateGP):
         #         print('mx', mean_x.shape)
         covar_x = self.covar_module(x)
         #         print('cx', covar_x.shape)
-        y = MultivariateNormal(mean_x, covar_x)
+        return MultivariateNormal(mean_x, covar_x)
         #         print('y', y.shape)
-        return y
 
 
 #     def __call__(self, inputs, are_samples=False, **kwargs):
@@ -272,7 +198,6 @@ class DGPLastLayer3(gpytorch.models.ApproximateGP):
 # #             output = output.expand(torch.Size([settings.num_likelihood_samples.value()]) + output.batch_shape)
 #         print("determ_output",output.shape)
 # #         return output#.unsqueeze(-1)
-
 
 
 class DGPHiddenLayer(DeepGPLayer):
@@ -356,14 +281,13 @@ class MultitaskDeepGP(DeepGP):
         # output=self.last_layer(torch.distributions.Normal(loc=hidden_rep1.mean, scale=hidden_rep1.variance.sqrt()).rsample(),task_indices=task_indices2)
         #         output=self.last_layer(torch.distributions.Normal(loc=hidden_rep1.mean, scale=hidden_rep1.variance.sqrt()).rsample().unsqueeze(-1),task_indices=task_indices1)
         #         print(torch.distributions.Normal(loc=hidden_rep1.mean, scale=hidden_rep1.variance.sqrt()).rsample().shape,"sample shape")
-        output = self.last_layer(
+        return self.last_layer(
             torch.distributions.Normal(
                 loc=hidden_rep1.mean, scale=hidden_rep1.variance.sqrt()
             ).rsample(),
             task_indices=task_indices1.cuda(),
         )
         #         print(output)
-        return output
 
     def predict(self, test_x, task_indices):
         with torch.no_grad():
@@ -434,15 +358,15 @@ likelihood = likelihood.cuda()
 
 import os
 
-smoke_test = "CI" in os.environ
-num_epochs = 1 if smoke_test else 500
+SMOKE_TEST = "CI" in os.environ
+num_epochs = 1 if SMOKE_TEST else 500
 model.train()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
 mll = DeepApproximateMLL(
     VariationalELBO(model.likelihood, model, num_data=full_train_y.size(0))
 )
 
-num_epochs = 1 if smoke_test else 500
+num_epochs = 1 if SMOKE_TEST else 500
 # epochs_iter = tqdm_notebook(range(num_epochs), desc="Epoch")
 epochs_iter = range(num_epochs)
 for i in epochs_iter:
@@ -647,8 +571,7 @@ for k in range(1500):
         n_jobs = multiprocessing.cpu_count()
 
         def calc(ii):
-            e = EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
-            return e
+            return EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
 
         ehvi = Parallel(n_jobs)(delayed(calc)([jj]) for jj in range(eh_mean.shape[0]))
         ehvi = np.array(ehvi)
@@ -824,17 +747,12 @@ for k in range(1500):
     mll = DeepApproximateMLL(
         VariationalELBO(likelihood, model, num_data=train_y1.size(0))
     )
-    if (counter < 250) == True:
-        num_epochs = 500
-    else:
-        num_epochs = 250
+    num_epochs = 500 if (counter < 250) is True else 250
     #    epochs_iter = tqdm_notebook(range(num_epochs), desc="Epoch")
     epochs_iter = range(num_epochs)
     for i in epochs_iter:
         optimizer.zero_grad()
-        output = model(
-            full_train_x.float(), task_indices=full_train_i.squeeze(-1).cuda()
-        )
+        output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1).cuda())
         loss = -mll(output, full_train_y)
         #        epochs_iter.set_postfix(loss=loss.item())
         loss.backward()

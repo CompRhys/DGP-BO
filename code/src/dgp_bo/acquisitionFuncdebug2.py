@@ -1,18 +1,15 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Nov 12 13:51:02 2020
+"""Created on Thu Nov 12 13:51:02 2020.
 
 @author: richardcouperthwaite
 """
 
 import numpy as np
-from scipy.stats import norm
 from numpy import random
+from scipy.stats import norm
 
 
 def knowledge_gradient(M, sn, mu, sigma):
-    """
-    This is the method used to determine the knowledge gradient of the fused model
+    """This is the method used to determine the knowledge gradient of the fused model
     for a given set of test data points. The aim is to calculate the best possible
     point to be used in the next iteration. This function will be called after the
     fused model is calculated for each of the lower order models being assumed to
@@ -100,8 +97,7 @@ def knowledge_gradient(M, sn, mu, sigma):
 
 
 def expected_improvement(curr_max, xi, y, std):
-    """
-    This function calculates the maximum expected improvement for a selection of
+    """This function calculates the maximum expected improvement for a selection of
     test points from the surrogate model of an objective function with a mean and variance.
 
     J. Mockus, V. Tiesis, and A. Zilinskas. Toward Global Optimization, volume 2,
@@ -120,7 +116,7 @@ def expected_improvement(curr_max, xi, y, std):
         The standard deviation from the surrogate model at all test points
         used in the optimization.
 
-    Returns
+    Returns:
     -------
     max_val : float
         The maximum expected improvement value.
@@ -130,17 +126,16 @@ def expected_improvement(curr_max, xi, y, std):
         Expected improvement values for all test points.
 
     """
-
     pdf = norm.pdf(y)
     cdf = norm.cdf(y)
 
     EI = (y - curr_max - xi) * pdf + std * cdf
 
     max_val = np.max(EI)
-    x_star = np.where(EI == max_val)[0]
+    x_star = np.where(max_val == EI)[0]
     try:
-        tm = x_star[0]
-    except:
+        x_star[0]
+    except IndexError:
         print(EI, "*********************EI***************")
         print(max_val, "*********************max_val***************")
         print(x_star, "*********************x_star***************")
@@ -150,14 +145,13 @@ def expected_improvement(curr_max, xi, y, std):
         EI = np.nan_to_num(EI, copy=True, nan=0.0, posinf=None, neginf=None)
         print(EI, "*********************NEW_EI***************")
         max_val = np.max(EI)
-        x_star = np.where(EI == max_val)[0]
+        x_star = np.where(max_val == EI)[0]
 
     return max_val, x_star[0], EI
 
 
 def probability_improvement(curr_max, xi, y, std):
-    """
-    This function calculates the maximum probability improvement for a selection of
+    """This function calculates the maximum probability improvement for a selection of
     test points from the surrogate model of an objective function with a mean and variance.
 
     Kushner, H. J. “A New Method of Locating the Maximum Point of an Arbitrary
@@ -176,7 +170,7 @@ def probability_improvement(curr_max, xi, y, std):
         The standard deviation from the surrogate model at all test points
         used in the optimization.
 
-    Returns
+    Returns:
     -------
     max_val : float
         The maximum probability of improvement value.
@@ -186,17 +180,15 @@ def probability_improvement(curr_max, xi, y, std):
         Probability of improvement values for all test points.
 
     """
-
     PI = norm.cdf((y - curr_max - xi) / std)
     max_val = np.max(PI)
-    x_star = np.where(PI == max_val)[0]
+    x_star = np.where(max_val == PI)[0]
 
     return max_val, x_star[0], PI
 
 
 def upper_conf_bound(kt, y, std):
-    """
-    This function calculates the Upper Confidence Bound for a selection of
+    """This function calculates the Upper Confidence Bound for a selection of
     test points from the surrogate model of an objective function with a mean and variance.
 
     D. D. Cox and S. John. SDO: A statistical method for global optimization. In
@@ -215,7 +207,7 @@ def upper_conf_bound(kt, y, std):
         The standard deviation from the surrogate model at all test points
         used in the optimization.
 
-    Returns
+    Returns:
     -------
     max_val : float
         The maximum upper confidence bound value.
@@ -225,17 +217,15 @@ def upper_conf_bound(kt, y, std):
         Upper confidence bound values for all test points.
 
     """
-
     UCB = y + kt * std
     max_val = np.max(UCB)
-    x_star = np.where(UCB == max_val)[0]
+    x_star = np.where(max_val == UCB)[0]
 
     return max_val, x_star[0], UCB
 
 
 def thompson_sampling(y, std):
-    """
-    Thompson sampling was first described by Thompson in 1933 as a solution to
+    """Thompson sampling was first described by Thompson in 1933 as a solution to
     the multi-arm bandit problem.
 
     Thompson, W. 1933. “On the likelihood that one unknown probability
@@ -250,7 +240,7 @@ def thompson_sampling(y, std):
         The standard deviation from the surrogate model at all test points
         used in the optimization.
 
-    Returns
+    Returns:
     -------
     nu_star : float
         The maximum value from the Thompson Sampling.
@@ -259,7 +249,6 @@ def thompson_sampling(y, std):
     tsVal : TYPE
         Sampled values for all test points.
     """
-
     tsVal = random.normal(loc=y, scale=std)
     nu_star = np.max(tsVal)
 
@@ -342,18 +331,14 @@ def EHVI22(means, sigmas, goal, ref, pareto):
                 for j in range(N_obj):
                     s_up = (ref[j] - means[j]) / sigmas[j]
                     s_low = (a[j] - means[j]) / sigmas[j]
-                    up = (ref[j] - means[j]) * norm.cdf(s_up) + sigmas[j] * norm.pdf(
-                        s_up
-                    )
+                    up = (ref[j] - means[j]) * norm.cdf(s_up) + sigmas[j] * norm.pdf(s_up)
                     low = (a[j] - means[j]) * norm.cdf(s_low) + sigmas[j] * norm.pdf(
                         s_low
                     )
                     hvi_temp1 = hvi_temp1 * (up - low)
                     s_up = (ref[j] - means[j]) / sigmas[j]
                     s_low = (aa[j] - means[j]) / sigmas[j]
-                    up = (ref[j] - means[j]) * norm.cdf(s_up) + sigmas[j] * norm.pdf(
-                        s_up
-                    )
+                    up = (ref[j] - means[j]) * norm.cdf(s_up) + sigmas[j] * norm.pdf(s_up)
                     low = (aa[j] - means[j]) * norm.cdf(s_low) + sigmas[j] * norm.pdf(
                         s_low
                     )

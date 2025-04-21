@@ -1,5 +1,15 @@
-import pandas as pd
+import multiprocessing
+import os
 import sys
+
+import gpytorch
+import numpy as np
+import pandas as pd
+import torch
+from joblib import Parallel, delayed
+
+from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 
 index = sys.argv[1]
 file_out = sys.argv[0][:-3] + sys.argv[1]
@@ -84,64 +94,9 @@ def c2ft(x, bmf="quasi_q", filename=filename_global):
     return torch.from_numpy(np.asarray(c11))
 
 
-def pos(x):
-    if x >= 0:
-        return x
-    elif x < 0:
-        return 0
-
-
-import numpy as np
-
-
-def dirlet5D(N_samp, dim):
-    from scipy.stats import dirichlet
-
-    out = []
-    n = 5
-    size = N_samp
-    alpha = np.ones(n)
-    samples = dirichlet.rvs(size=size, alpha=alpha)
-    # print(samples)
-    samples2 = np.asarray(
-        [
-            np.asarray(
-                [
-                    round(i * 32),
-                    round(j * 32),
-                    round(k * 32),
-                    round(l * 32),
-                    pos(
-                        32
-                        - round(i * 32)
-                        - round(j * 32)
-                        - round(k * 32)
-                        - round(l * 32)
-                    ),
-                ]
-            )
-            for i, j, k, l, m in samples
-        ]
-    )
-    for i, j, k, l, m in samples2:
-        if i / 32 + j / 32 + k / 32 + l / 32 + m / 32 == 1:
-            out.append(np.asarray([i, j, k, l, m]))
-        else:
-            out.append(dirlet5D(1, 5)[0])
-            # print("********************exception**********")
-
-    return np.asarray(out)
-
-
-import torch
-import gpytorch
-
-# import matplotlib.pyplot as plt
-
-
 class ExactGPModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
-        super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
+        super().__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(
@@ -160,21 +115,6 @@ likelihood = gpytorch.likelihoods.GaussianLikelihood(
     noise_constraint=gpytorch.constraints.Interval(0.001, 10)
 )
 
-
-import gpytorch
-
-# from matplotlib import pyplot as plt
-from pyDOE import *
-from dgp_bo.multiobjective import Pareto_finder
-import os
-
-# from mymod import call_Curtin_Model , call_kkr
-import multiprocessing
-from joblib import Parallel, delayed
-
-# import matlab.engine
-# eng = matlab.engine.start_matlab()
-from dgp_bo.multiobjective import EHVI, HV_Calc
 
 # import tqdm
 gp_mean1_lst = []
@@ -205,7 +145,7 @@ y2 = cft(x1)
 
 class ExactGPModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
-        super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
+        super().__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(
@@ -232,8 +172,8 @@ model2 = ExactGPModel(x2, y2, likelihood2)
 
 # this is for running the notebook in our testing framework
 
-smoke_test = "CI" in os.environ
-training_iter = 2 if smoke_test else 500
+SMOKE_TEST = "CI" in os.environ
+training_iter = 2 if SMOKE_TEST else 500
 
 
 # Find optimal model hyperparameters
@@ -519,8 +459,7 @@ for k in range(700):
     n_jobs = multiprocessing.cpu_count()
 
     def calc(ii):
-        e = EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
-        return e
+        return EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
 
     ehvi = Parallel(n_jobs)(delayed(calc)([jj]) for jj in range(eh_mean.shape[0]))
     ehvi = np.array(ehvi)
@@ -558,9 +497,7 @@ for k in range(700):
     #     test_x2=test_x2[test_x2!=new_x.item()]
     #     test_x2=test_x2.unsqueeze(1)
 
-    yp = np.concatenate(
-        (y1.reshape(y1.shape[0], 1), y2.reshape(y1.shape[0], 1)), axis=1
-    )
+    yp = np.concatenate((y1.reshape(y1.shape[0], 1), y2.reshape(y1.shape[0], 1)), axis=1)
     yp_query = yp.reshape(yp.shape[0], 2)
     # print(yp_query)
     N_obj = 2
@@ -586,8 +523,8 @@ for k in range(700):
     # this is for running the notebook in our testing framework
     import os
 
-    smoke_test = "CI" in os.environ
-    training_iter = 2 if smoke_test else 500
+    SMOKE_TEST = "CI" in os.environ
+    training_iter = 2 if SMOKE_TEST else 500
 
     # Find optimal model hyperparameters
     model1.train()

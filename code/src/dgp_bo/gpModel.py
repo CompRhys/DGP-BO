@@ -1,24 +1,20 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Nov 12 12:43:08 2020
+"""Created on Thu Nov 12 12:43:08 2020.
 
 @author: richardcouperthwaite
 """
 
-from george import kernels, GP
-import numpy as np
 from copy import deepcopy
+
+import numpy as np
+from george import GP, kernels
 
 
 class gp_model:
-    """
-    A class that creates a GP from a given set of input data and hyper-parameters.
+    """A class that creates a GP from a given set of input data and hyper-parameters.
     The Kernel can be selected from three separate Kernels.
     """
 
-    def __init__(
-        self, x_train, y_train, l_param, sigma_f, sigma_n, n_dim, kern, mean=0
-    ):
+    def __init__(self, x_train, y_train, l_param, sigma_f, sigma_n, n_dim, kern, mean=0):
         self.x_train = x_train
         self.y_train = y_train
         self.l_param = l_param**2
@@ -33,13 +29,12 @@ class gp_model:
     def create_kernel(self):
         # This function creates the covariance function kernel for the Gaussian Process
         if self.kern == "SE":
-            return self.sigma_f * kernels.ExpSquaredKernel(
-                self.l_param, ndim=self.n_dim
-            )
-        elif self.kern == "M32":
+            return self.sigma_f * kernels.ExpSquaredKernel(self.l_param, ndim=self.n_dim)
+        if self.kern == "M32":
             return self.sigma_f * kernels.Matern32Kernel(self.l_param, ndim=self.n_dim)
-        elif self.kern == "M52":
+        if self.kern == "M52":
             return self.sigma_f * kernels.Matern52Kernel(self.l_param, ndim=self.n_dim)
+        return None
 
     def create_gp(self):
         # This function uses the kernel defined above to compute and train the Gaussian Process model
@@ -75,12 +70,10 @@ class gp_model:
         self.gp = self.create_gp()
 
     def xtrain(self):
-        x = self.x_train
-        return x
+        return self.x_train
 
     def ytrain(self):
-        y = self.y_train
-        return y
+        return self.y_train
 
     def sample_posterior(self, x_test, N_samp):
         # This function provides a random sampling from the Gaussian Process

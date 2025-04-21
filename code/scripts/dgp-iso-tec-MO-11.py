@@ -1,87 +1,20 @@
-import pandas as pd
+import multiprocessing
+import os
 import sys
+from copy import deepcopy
+
+import gpytorch
+import numpy as np
+import pandas as pd
+import torch
+from gpytorch.distributions import MultivariateNormal
+from joblib import Parallel, delayed
+
+from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 
 index = sys.argv[1]
 file_out = sys.argv[0][:-3] + sys.argv[1]
-import torch
-import gpytorch
-
-# from matplotlib import pyplot as plt
-import numpy as np
-from pyDOE import *
-from copy import deepcopy
-from dgp_bo.multiobjective import Pareto_finder
-import os
-
-# from mymod import call_Curtin_Model , call_kkr
-import multiprocessing
-from joblib import Parallel, delayed
-
-# import matlab.engine
-# eng = matlab.engine.start_matlab()
-from dgp_bo.multiobjective import EHVI, HV_Calc
-
-
-# from matplotlib import pyplot as plt
-from pyDOE import *
-
-
-
-# import matplotlib.pyplot as plt
-from gpytorch.distributions import MultivariateNormal
-
-# from acquisitionFuncdebug2 import expected_improvement
-
-# from matplotlib import pyplot as plt
-
-
-def pos(x):
-    if x >= 0:
-        return x
-    elif x < 0:
-        return 0
-
-
-
-
-def dirlet5D(N_samp, dim):
-    from scipy.stats import dirichlet
-
-    out = []
-    n = 5
-    size = N_samp
-    alpha = np.ones(n)
-    samples = dirichlet.rvs(size=size, alpha=alpha)
-    # print(samples)
-    samples2 = np.asarray(
-        [
-            np.asarray(
-                [
-                    round(i * 32),
-                    round(j * 32),
-                    round(k * 32),
-                    round(l * 32),
-                    pos(
-                        32
-                        - round(i * 32)
-                        - round(j * 32)
-                        - round(k * 32)
-                        - round(l * 32)
-                    ),
-                ]
-            )
-            for i, j, k, l, m in samples
-        ]
-    )
-    for i, j, k, l, m in samples2:
-        if i / 32 + j / 32 + k / 32 + l / 32 + m / 32 == 1:
-            out.append(np.asarray([i, j, k, l, m]))
-        else:
-            out.append((dirlet5D(1, 5)[0]))
-    #             print("********************exception**********")
-
-    return np.asarray(out)
-
 
 filename_global = "5space-md16-tec-new.h5"
 filename_global2 = "5space-mor.h5"
@@ -156,19 +89,19 @@ def c2ft(x, bmf="volume_eq", filename=filename_global2):
     return torch.from_numpy(np.asarray(c11))
 
 
-
-from gpytorch.means import ConstantMean, LinearMean
 from gpytorch.kernels import MaternKernel, ScaleKernel
-from gpytorch.variational import (
-    VariationalStrategy,
-    CholeskyVariationalDistribution,
-)
-from gpytorch.models.deep_gps import DeepGPLayer, DeepGP
-from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
+from gpytorch.means import ConstantMean, LinearMean
+from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
+from gpytorch.models.deep_gps import DeepGP, DeepGPLayer
+from gpytorch.variational import (
+    CholeskyVariationalDistribution,
+    VariationalStrategy,
+)
+
 # from matplotlib import pyplot as plt
 
-smoke_test = "CI" in os.environ
+SMOKE_TEST = "CI" in os.environ
 # %matplotlib inline
 
 # Here's a simple standard layer
@@ -247,9 +180,8 @@ class MultitaskDeepGP(DeepGP):
 
     def forward(self, inputs):
         hidden_rep1 = self.hidden_layer(inputs)
-        output = self.last_layer(hidden_rep1)
+        return self.last_layer(hidden_rep1)
         #         output2 = self.last_layer2(output)
-        return output
 
     def predict(self, test_x):
         with torch.no_grad():
@@ -397,9 +329,8 @@ class MultitaskDeepGP(DeepGP):
 
     def forward(self, inputs):
         hidden_rep1 = self.hidden_layer(inputs)
-        output = self.last_layer(hidden_rep1)
+        return self.last_layer(hidden_rep1)
         #         output2 = self.last_layer2(output)
-        return output
 
     def predict(self, test_x):
         with torch.no_grad():
@@ -422,7 +353,7 @@ model.train()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-num_epochs = 1 if smoke_test else 500
+num_epochs = 1 if SMOKE_TEST else 500
 epochs_iter = num_epochs
 for i in range(epochs_iter):
     optimizer.zero_grad()
@@ -547,8 +478,7 @@ for k in range(500):
     n_jobs = multiprocessing.cpu_count()
 
     def calc(ii):
-        e = EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
-        return e
+        return EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
 
     ehvi = Parallel(n_jobs)(delayed(calc)([jj]) for jj in range(eh_mean.shape[0]))
     ehvi = np.array(ehvi)
@@ -663,7 +593,7 @@ for k in range(500):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.9)
     mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-    num_epochs = 1 if smoke_test else 200
+    num_epochs = 1 if SMOKE_TEST else 200
 
     epochs_iter = range(num_epochs)
     for i in epochs_iter:
@@ -685,7 +615,7 @@ for k in range(500):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-    num_epochs = 1 if smoke_test else 200
+    num_epochs = 1 if SMOKE_TEST else 200
 
     epochs_iter = range(num_epochs)
     for i in epochs_iter:
@@ -706,7 +636,7 @@ for k in range(500):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
     mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-    num_epochs = 1 if smoke_test else 100
+    num_epochs = 1 if SMOKE_TEST else 100
 
     epochs_iter = range(num_epochs)
     for i in epochs_iter:

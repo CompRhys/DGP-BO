@@ -1,6 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Jun 14 22:17:58 2023
+"""Created on Wed Jun 14 22:17:58 2023.
 
 @author: Dania
 """

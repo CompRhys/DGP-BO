@@ -1,16 +1,18 @@
+import multiprocessing
+
 import numpy as np
 import pandas as pd
-from pyDOE import *
-from dgp_bo.multiobjective import Pareto_finder
-from sklearn.preprocessing import normalize
-from dgp_bo.gpModel import gp_model
-import multiprocessing
 from joblib import Parallel, delayed
+from pyDOE import *
+from sklearn.preprocessing import normalize
+
+from dgp_bo.gpModel import gp_model
 
 # import matlab.engine
 # eng = matlab.engine.start_matlab()
 from dgp_bo.MeanCov1 import MeanCov1
-from dgp_bo.multiobjective import EHVI, HV_Calc
+from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
+
 # objectives: 1-Pugh Ratio B/G , 2-Cauchy Pressure , 3-Yield strength
 
 itr = 301
@@ -29,7 +31,7 @@ normal = np.array([[2, 50, 200.0001]])
 rep = 100
 hv_total = []
 
-for j in range(rep):
+for _j in range(rep):
     x_init_m1 = pd.DataFrame(pd.read_csv("input_m.csv", header=None)).to_numpy()
     x_init_m2 = pd.DataFrame(pd.read_csv("input_m.csv", header=None)).to_numpy()
     x_init_m3 = pd.DataFrame(pd.read_csv("input_Cur.csv", header=None)).to_numpy()
@@ -143,8 +145,7 @@ for j in range(rep):
         n_jobs = multiprocessing.cpu_count()
 
         def calc(ii):
-            e = EHVI(mean[ii], std[ii], goal, ref, y_pareto_truth)
-            return e
+            return EHVI(mean[ii], std[ii], goal, ref, y_pareto_truth)
 
         ehvi = Parallel(n_jobs)(delayed(calc)([jj]) for jj in range(mean.shape[0]))
         ehvi = np.array(ehvi)
@@ -158,9 +159,7 @@ for j in range(rep):
         y1, sig1 = GPR_m1.predict_var(x_query)
         y2, sig1 = GPR_m2.predict_var(x_query)
         y3, sig1 = GPR_m3.predict_var(x_query)
-        y = np.concatenate(
-            (y1.reshape(1, 1), y2.reshape(1, 1), y3.reshape(1, 1)), axis=1
-        )
+        y = np.concatenate((y1.reshape(1, 1), y2.reshape(1, 1), y3.reshape(1, 1)), axis=1)
         y_query = y.reshape(1, 3)
         sn_query = np.array([[sn_m, sn_m, sn_m]])
 

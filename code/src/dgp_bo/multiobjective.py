@@ -1,8 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-
-@author: Danial Khatamsaz
-"""
+"""@author: Danial Khatamsaz."""
 
 # means : GP mean estimation of objectives of the test points (fused means in
 # multifidelity cases). Each column for 1 objective values
@@ -22,11 +18,11 @@
 
 ## All the inputs should be 2D np arrays
 
-import numpy as np
-from scipy.stats import norm
-
 # from graph import improvement , volume
 from copy import deepcopy
+
+import numpy as np
+from scipy.stats import norm
 
 
 def EHVI(mm, ss, goal, ref, pareto):
@@ -157,7 +153,7 @@ def HV_Calc(goal, ref, pp):
     # related to the objective 1. Basically, each row = 1 design
     #
     pareto = deepcopy(pp)
-    N_obj = pareto.shape[1]
+    pareto.shape[1]
 
     for i in range(goal.shape[1]):
         if goal[0, i] == 1:
@@ -165,9 +161,7 @@ def HV_Calc(goal, ref, pp):
 
     pareto[pareto[:, 0].argsort()]
 
-    hv = recursive_HV(ref, pareto)
-
-    return hv
+    return recursive_HV(ref, pareto)
 
 
 def recursive_HV(ref, pareto):

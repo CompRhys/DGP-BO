@@ -1,84 +1,18 @@
-import pandas as pd
 import sys
+
+import pandas as pd
+import multiprocessing
+import os
+import gpytorch
+import numpy as np
+import torch
+from joblib import Parallel, delayed
+from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
+
 
 index = sys.argv[1]
 file_out = sys.argv[0][:-3] + sys.argv[1]
-
-import torch
-import gpytorch
-
-# from matplotlib import pyplot as plt
-import numpy as np
-from pyDOE import *
-from dgp_bo.multiobjective import Pareto_finder
-import os
-
-# from mymod import call_Curtin_Model , call_kkr
-import multiprocessing
-from joblib import Parallel, delayed
-
-# import matlab.engine
-# eng = matlab.engine.start_matlab()
-from dgp_bo.multiobjective import EHVI, HV_Calc
-
-
-# from matplotlib import pyplot as plt
-from pyDOE import *
-
-
-
-# import matplotlib.pyplot as plt
-# from acquisitionFuncdebug2 import expected_improvement
-
-
-def pos(x):
-    if x >= 0:
-        return x
-    elif x < 0:
-        return 0
-
-
-
-
-def dirlet5D(N_samp, dim):
-    from scipy.stats import dirichlet
-
-    out = []
-    n = 5
-    size = N_samp
-    alpha = np.ones(n)
-    samples = dirichlet.rvs(size=size, alpha=alpha)
-    # print(samples)
-    samples2 = np.asarray(
-        [
-            np.asarray(
-                [
-                    round(i * 32),
-                    round(j * 32),
-                    round(k * 32),
-                    round(l * 32),
-                    pos(
-                        32
-                        - round(i * 32)
-                        - round(j * 32)
-                        - round(k * 32)
-                        - round(l * 32)
-                    ),
-                ]
-            )
-            for i, j, k, l, m in samples
-        ]
-    )
-    for i, j, k, l, m in samples2:
-        if i / 32 + j / 32 + k / 32 + l / 32 + m / 32 == 1:
-            out.append(np.asarray([i, j, k, l, m]))
-        else:
-            out.append(dirlet5D(1, 5)[0])
-    #             print("********************exception**********")
-
-    return np.asarray(out)
-
-
 filename_global = "5space-mor.h5"
 filename_global2 = "5space-md16-tec-new.h5"
 
@@ -172,9 +106,7 @@ opt_imp = []
 settings.debug.off()
 
 # train_x1 = torch.from_numpy(normalize(torch.rand((1, 5)), axis=1, norm='l1'))#normalize(torch.rand((2, 5)), axis=1, norm='l1')
-train_x1 = torch.from_numpy(
-    (dirlet5D(2, 5)) / 32
-)  # [np.random.randint(0,550,size=3),:]
+train_x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)  # [np.random.randint(0,550,size=3),:]
 train_x2 = train_x1
 train_x3 = train_x1
 
@@ -186,7 +118,7 @@ train_y3 = c2ft(train_x3)
 
 class MultitaskGPModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
-        super(MultitaskGPModel, self).__init__(train_x, train_y, likelihood)
+        super().__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.MaternKernel(
             lengthscale_constraint=gpytorch.constraints.Interval(0.2, 0.8)
@@ -229,8 +161,8 @@ model = MultitaskGPModel((full_train_x, full_train_i), full_train_y, likelihood)
 
 # this is for running the notebook in our testing framework
 
-smoke_test = "CI" in os.environ
-training_iterations = 2 if smoke_test else 500
+SMOKE_TEST = "CI" in os.environ
+training_iterations = 2 if SMOKE_TEST else 500
 
 
 # Find optimal model hyperparameters
@@ -245,7 +177,7 @@ optimizer = torch.optim.Adam(
 # "Loss" for GPs - the marginal log likelihood
 mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
-for i in range(training_iterations):
+for _i in range(training_iterations):
     optimizer.zero_grad()
     output = model(full_train_x, full_train_i)
     loss = -mll(output, full_train_y)
@@ -338,8 +270,7 @@ for k in range(700):
     n_jobs = multiprocessing.cpu_count()
 
     def calc(ii):
-        e = EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
-        return e
+        return EHVI(eh_mean[ii], eh_std[ii], goal, ref, y_pareto_truth)
 
     ehvi = Parallel(n_jobs)(delayed(calc)([jj]) for jj in range(eh_mean.shape[0]))
     ehvi = np.array(ehvi)
@@ -487,8 +418,8 @@ for k in range(700):
 
     import os
 
-    smoke_test = "CI" in os.environ
-    training_iterations = 2 if smoke_test else 500
+    SMOKE_TEST = "CI" in os.environ
+    training_iterations = 2 if SMOKE_TEST else 500
 
     # Find optimal model hyperparameters
     model.train()
@@ -516,8 +447,8 @@ for k in range(700):
     #                 train_yt=full_train_y[ind-5:ind]
 
     #             import os
-    #             smoke_test = ('CI' in os.environ)
-    #             training_iterations = 2 if smoke_test else 50
+    #             SMOKE_TEST = ('CI' in os.environ)
+    #             training_iterations = 2 if SMOKE_TEST else 50
 
     #             # Find optimal model hyperparameters
     #             model.train()
@@ -537,7 +468,7 @@ for k in range(700):
     #                 #print('Iter %d/50 - Loss: %.3f' % (i + 1, loss.item()))
     #                 optimizer.step()
 
-    for i in range(training_iterations):
+    for _i in range(training_iterations):
         optimizer.zero_grad()
         output = model(full_train_x, full_train_i)
         loss = -mll(output, full_train_y)
