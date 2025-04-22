@@ -18,7 +18,7 @@ def knowledge_gradient(M, sn, mu, sigma):
     Implementation based on the work by Frazier, Powell, Dayanik
     [1]P. Frazier, W. Powell, and S. Dayanik, “The Knowledge-Gradient Policy for
     Correlated Normal Beliefs,” INFORMS Journal on Computing, vol. 21, no. 4, pp.
-    599–613, May 2009.
+    599-613, May 2009.
 
     M: the number of samples
     sn: the noise of the model
@@ -61,13 +61,11 @@ def knowledge_gradient(M, sn, mu, sigma):
         except IndexError:
             b = sigma / np.sqrt(sn**2 + sigma[i])
 
-        I = np.argsort(b)
-        a = a[I]
-        b = b[I]
+        sort_ids = np.argsort(b)
+        a = a[sort_ids]
+        b = b[sort_ids]
         bb, indexes, inverse = np.unique(b, return_index=True, return_inverse=True)
-        aa = []
-        for ii in range(len(indexes)):
-            aa.append(np.max(a[np.where(b == b[indexes[ii]])]))
+        aa = [np.max(a[np.where(b == b[indexes[ii]])]) for ii in range(len(indexes))]
 
         MM = len(aa)
         aa = np.array(aa)
@@ -98,7 +96,8 @@ def knowledge_gradient(M, sn, mu, sigma):
 
 def expected_improvement(curr_max, xi, y, std):
     """This function calculates the maximum expected improvement for a selection of
-    test points from the surrogate model of an objective function with a mean and variance.
+    test points from the surrogate model of an objective function with a mean
+    and variance.
 
     J. Mockus, V. Tiesis, and A. Zilinskas. Toward Global Optimization, volume 2,
     chapter The Application of Bayesian Methods for Seeking the Extremum, pages
@@ -151,12 +150,13 @@ def expected_improvement(curr_max, xi, y, std):
 
 
 def probability_improvement(curr_max, xi, y, std):
-    """This function calculates the maximum probability improvement for a selection of
-    test points from the surrogate model of an objective function with a mean and variance.
+    """This function calculates the maximum probability improvement for a
+    selection of test points from the surrogate model of an objective function
+    with a mean and variance.
 
     Kushner, H. J. “A New Method of Locating the Maximum Point of an Arbitrary
     Multipeak Curve in the Presence of Noise.” Journal of Basic Engineering 86,
-    no. 1 (March 1, 1964): 97–106. https://doi.org/10.1115/1.3653121.
+    no. 1 (March 1, 1964): 97-106. https://doi.org/10.1115/1.3653121.
 
     Parameters
     ----------
@@ -189,7 +189,8 @@ def probability_improvement(curr_max, xi, y, std):
 
 def upper_conf_bound(kt, y, std):
     """This function calculates the Upper Confidence Bound for a selection of
-    test points from the surrogate model of an objective function with a mean and variance.
+    test points from the surrogate model of an objective function with a mean
+    and variance.
 
     D. D. Cox and S. John. SDO: A statistical method for global optimization. In
     M. N. Alexandrov and M. Y. Hussaini, editors, Multidisciplinary Design Opti-
@@ -230,7 +231,7 @@ def thompson_sampling(y, std):
 
     Thompson, W. 1933. “On the likelihood that one unknown probability
     exceeds another in view of the evidence of two samples”. Biometrika.
-    25(3/4): 285–294.
+    25(3/4): 285-294.
 
     Parameters
     ----------

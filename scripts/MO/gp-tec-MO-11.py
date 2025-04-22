@@ -8,7 +8,7 @@ import torch
 from joblib import Parallel, delayed
 
 from dgp_bo import DATA_DIR
-from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.gp import ExactGPModel
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import bmft, cft
@@ -37,7 +37,7 @@ ref = np.array([[0, 0]])
 goal = np.array([[1, 1]])
 
 hv_total_lst = []
-x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)
+x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 
 
 x2 = x1
@@ -72,7 +72,7 @@ model1.eval()
 likelihood1.eval()
 
 with torch.no_grad(), gpytorch.settings.fast_pred_var():
-    test_x1 = torch.from_numpy((dirlet5D(500, 5)) / 32)
+    test_x1 = torch.from_numpy((dirichlet5D(500)) / 32)
     observed_pred1 = likelihood(model1(test_x1))
 
 
@@ -92,7 +92,7 @@ for _i in range(TRAINING_ITERATIONS):
 
 model2.eval()
 likelihood2.eval()
-test_x1 = torch.from_numpy((dirlet5D(500, 5)) / 32)
+test_x1 = torch.from_numpy((dirichlet5D(500)) / 32)
 with torch.no_grad(), gpytorch.settings.fast_pred_var():
     observed_pred1 = likelihood1(model1(test_x1))
 
@@ -104,27 +104,25 @@ mean_tp2 = observed_pred2.mean.detach()
 yp = np.concatenate((y1.reshape(y1.shape[0], 1), y2.reshape(y2.shape[0], 1)), axis=1)
 yp_query = yp.reshape(y1.shape[0], 2)
 
-N_obj = 2
 data_yp = yp_query
 
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
-test_x = torch.from_numpy((dirlet5D(550, 5)) / 32)
+test_x = torch.from_numpy((dirichlet5D(500)) / 32)
 test_x2 = test_x
 test_x3 = test_x
 test_x4 = test_x
-for k in range(BO_ITERATIONS):
+for _k in range(BO_ITERATIONS):
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
     xi = 0.3
 
-    test_x = torch.from_numpy((dirlet5D(550, 5)) / 32)
+    test_x = torch.from_numpy((dirichlet5D(500)) / 32)
     model1.eval()
     likelihood1.eval()
 
     for i in range(int(test_x.shape[0] / 5)):
-        #             print(i)
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             ind = i * 5
             if i == 0:
@@ -154,8 +152,6 @@ for k in range(BO_ITERATIONS):
         var1 = (upper1.detach() - mean1) / 2
         mean_t1 = torch.cat((mean_t1, mean1), 0)
         var_t1 = torch.cat((var_t1, var1), 0)
-
-    print(k)
 
     model2.eval()
     likelihood2.eval()
@@ -230,7 +226,6 @@ for k in range(BO_ITERATIONS):
 
     yp = np.concatenate((y1.reshape(y1.shape[0], 1), y2.reshape(y1.shape[0], 1)), axis=1)
     yp_query = yp.reshape(yp.shape[0], 2)
-    N_obj = 2
     data_yp = yp
 
     y_pareto_truth, ind = Pareto_finder(data_yp, goal)
@@ -258,7 +253,7 @@ for k in range(BO_ITERATIONS):
     likelihood1.eval()
 
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        test_x1 = torch.from_numpy((dirlet5D(500, 5)) / 32)
+        test_x1 = torch.from_numpy((dirichlet5D(500)) / 32)
         observed_pred1 = likelihood(model1(test_x1))
 
     model2.train()

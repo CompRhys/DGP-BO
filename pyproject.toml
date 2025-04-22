@@ -74,6 +74,7 @@ select = [
   "YTT",  # flake8-2020
 ]
 ignore = [
+  "B023",   # Function definition does not bind loop variable
   "C408",   # Unnecessary dict call - rewrite as a literal
 #   "D100",   # Missing docstring in public module
 #   "D104",   # Missing docstring in public package
@@ -86,3 +87,7 @@ ignore = [
   "PT006",  # pytest-parametrize-names-wrong-type
 ]
 pydocstyle.convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"src/dgp_bo/dirichlet.py" = ["E741"]
+"src/dgp_bo/utils.py" = ["E741"]

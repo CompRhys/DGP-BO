@@ -10,7 +10,7 @@ from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from joblib import Parallel, delayed
 
 from dgp_bo import DATA_DIR
-from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.mtdgp import MultitaskIsoDeepGP
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import bmft, c2ft, cft
@@ -38,7 +38,7 @@ dgp_std3_lst = []
 ref = np.array([[180, 0]])
 goal = np.array([[0, 1]])
 
-x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)
+x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 x2 = x1
 x3 = x1
 
@@ -85,21 +85,19 @@ yp = np.concatenate(
 )
 yp_query = yp.reshape(train_y1.shape[0], 2)
 
-N_obj = 2
 data_yp = yp_query
 
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
-test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
-for k in range(BO_ITERATIONS):
-    print("****************", k, "********************")
+test_x = torch.from_numpy((dirichlet5D(500)) / 32)
+for _k in range(BO_ITERATIONS):
     torch.set_flush_denormal(True)
     xi = 0.9
     e = True
     counter2 = 0
 
-    test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
+    test_x = torch.from_numpy((dirichlet5D(500)) / 32)
     for i in range(int(test_x.shape[0] / 5)):
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             ind = i * 5
@@ -187,13 +185,11 @@ for k in range(BO_ITERATIONS):
         axis=1,
     )
     yp_query = yp.reshape(yp.shape[0], 2)
-    N_obj = 2
     data_yp = yp
 
     y_pareto_truth, ind = Pareto_finder(data_yp, goal)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
     hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
-    print(hv_t, "hv_t")
     model = MultitaskIsoDeepGP(x1_t.shape)
     likelihod = model.likelihood
 

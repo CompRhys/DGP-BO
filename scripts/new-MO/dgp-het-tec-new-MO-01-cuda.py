@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 
 from dgp_bo import DATA_DIR
 from dgp_bo.acquisitions import upper_conf_bound
-from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.mtdgp import MultitaskHetDeepGP
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import bmft, c2ft, cft
@@ -34,7 +34,7 @@ dgp_std3_lst = []
 ref = np.array([[180, 0]])
 goal = np.array([[0, 1]])
 
-train_x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)
+train_x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 train_x2 = train_x1
 train_x3 = train_x1
 
@@ -78,7 +78,6 @@ yp = np.concatenate(
 )
 yp_query = yp.reshape(train_y1t.shape[0], 2)
 
-N_obj = 2
 data_yp = yp_query
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
@@ -90,8 +89,7 @@ for k in range(BO_ITERATIONS):
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
 
-    print("#######################", k, "######################")
-    test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
+    test_x = torch.from_numpy((dirichlet5D(500)) / 32)
     for i in range(int(test_x.shape[0] / 5)):
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             ind = i * 5
@@ -282,14 +280,11 @@ for k in range(BO_ITERATIONS):
             axis=1,
         )
         yp_query = yp.reshape(yp.shape[0], 2)
-        print(yp_query)
-        N_obj = 2
         data_yp = yp
 
         y_pareto_truth, ind = Pareto_finder(data_yp, goal)
         hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
         hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
-        print(hv_t, "hv_t")
 
     if (k % CHEAP_EXPENSIVE_RATIO) != 0:
         task = 0

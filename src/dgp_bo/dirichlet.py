@@ -10,13 +10,10 @@ def pos(x):
     return None
 
 
-def dirlet5D(N_samp, dim):
+def dirichlet5D(n_samples):
+    """Draw n_samples from the Dirichlet distribution with 5 dimensions."""
     out = []
-    n = 5
-    size = N_samp
-    alpha = np.ones(n)
-    samples = dirichlet.rvs(size=size, alpha=alpha)
-    # print(samples)
+    samples = dirichlet.rvs(size=n_samples, alpha=np.ones(5))
     samples2 = np.asarray(
         [
             np.asarray(
@@ -37,7 +34,6 @@ def dirlet5D(N_samp, dim):
         if i / 32 + j / 32 + k / 32 + l / 32 + m / 32 == 1:
             out.append(np.asarray([i, j, k, l, m]))
         else:
-            out.append(dirlet5D(1, 5)[0])
-            # print("********************exception**********")
+            out.append(dirichlet5D(n_samples=1)[0])
 
     return np.asarray(out)

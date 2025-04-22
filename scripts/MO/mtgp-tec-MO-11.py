@@ -9,7 +9,7 @@ from gpytorch import settings
 from joblib import Parallel, delayed
 
 from dgp_bo import DATA_DIR
-from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.mtgp import MultitaskGPModel
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import bmft, c2ft, cft
@@ -33,7 +33,7 @@ ref = np.array([[0, 0]])
 goal = np.array([[1, 1]])
 settings.debug.off()
 
-train_x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)
+train_x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 train_x2 = train_x1
 train_x3 = train_x1
 
@@ -81,20 +81,18 @@ yp = np.concatenate(
 )
 yp_query = yp.reshape(train_y1.shape[0], 2)
 
-N_obj = 2
 data_yp = yp_query
 
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
 
-test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
-for k in range(BO_ITERATIONS):
-    print("**************", k, "************************")
+test_x = torch.from_numpy((dirichlet5D(500)) / 32)
+for _k in range(BO_ITERATIONS):
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
     xi = 0.9
-    test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
+    test_x = torch.from_numpy((dirichlet5D(500)) / 32)
     test_i_task1 = torch.full((test_x.shape[0], 1), dtype=torch.long, fill_value=0)
     test_i_task2 = torch.full((test_x.shape[0], 1), dtype=torch.long, fill_value=1)
     test_i_task3 = torch.full((test_x.shape[0], 1), dtype=torch.long, fill_value=2)
@@ -180,7 +178,6 @@ for k in range(BO_ITERATIONS):
         axis=1,
     )
     yp_query = yp.reshape(yp.shape[0], 2)
-    N_obj = 2
     data_yp = yp
     y_pareto_truth, ind = Pareto_finder(data_yp, goal)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
