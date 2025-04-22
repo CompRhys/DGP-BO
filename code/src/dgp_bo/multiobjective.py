@@ -18,7 +18,6 @@
 
 ## All the inputs should be 2D np arrays
 
-# from graph import improvement , volume
 from copy import deepcopy
 
 import numpy as np

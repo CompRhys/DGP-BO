@@ -1,10 +1,8 @@
 import multiprocessing
 import os
-import sys
 
 import gpytorch
 import numpy as np
-import pandas as pd
 import torch
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import MaternKernel, ScaleKernel
@@ -17,90 +15,16 @@ from gpytorch.variational import (
 )
 from joblib import Parallel, delayed
 
+from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirlet5D
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
+from dgp_bo.utils import bmft, c2ft, cft
 
 SMOKE_TEST = "CI" in os.environ
-index = sys.argv[1]
-file_out = sys.argv[0][:-3] + sys.argv[1]
 
-
-df = pd.read_hdf("5space-mor.h5")
-df.head()
-
-filename_global = "5space-mor.h5"
-filename_global2 = "5space-md16-tec-new.h5"
-
-
-def bmft(x, bmf="tec", filename=filename_global2):
-    xt = x.cpu().numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        #         print(x,y,z,u,v,"###################################333")
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        print(c, "****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11)).cuda()
-
-    # return torch.from_numpy(y)
-
-
-def cft(x, bmf="bulkmodul_eq", filename=filename_global):
-    xt = x.cpu().numpy()
-
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        #         print(x,y,z,u,v,"###################################333")
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        #         print(c*10**7,"****")
-        print(c, "****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.array(c11)).cuda()
-
-
-def c2ft(x, bmf="volume_eq", filename=filename_global):
-    xt = x.cpu().numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        #         print(x,y,z,u,v,"###################################333")
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        #         print(c*10**7,"****")
-        print(c, "****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11)).cuda()
+file_out = os.path.basename(__file__)[:-3]
+filename_global = os.path.join(DATA_DIR, "5space-mor.h5")
+filename_global2 = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 
 class DGPLastLayer3(gpytorch.models.ApproximateGP):
@@ -269,7 +193,7 @@ class MultitaskDeepGP(DeepGP):
         # print(inputs)
         # print(torch.from_numpy(np.ones(inputs.shape[0],dtype=int)).long()*task_indices)
         task_indices1 = (
-            torch.from_numpy(np.ones(inputs.shape[0], dtype=int) * 1).long().cuda()
+            torch.from_numpy(np.ones(inputs.shape[0], dtype=int) * 1).long()
             * task_indices
         )
         hidden_rep1 = self.hidden_layer(inputs)  # ,task_indices=task_indices1
@@ -285,7 +209,7 @@ class MultitaskDeepGP(DeepGP):
             torch.distributions.Normal(
                 loc=hidden_rep1.mean, scale=hidden_rep1.variance.sqrt()
             ).rsample(),
-            task_indices=task_indices1.cuda(),
+            task_indices=task_indices1,
         )
         #         print(output)
 
@@ -323,11 +247,9 @@ goal = np.array([[0, 1]])
 opt_imp = []
 
 
-from acquisitionFuncdebug2 import upper_conf_bound
+from dgp_bo.acquisitions import upper_conf_bound
 
-train_x1 = torch.from_numpy(
-    (dirlet5D(2, 5)) / 32
-).cuda()  # [np.random.randint(0,557,size=3),:]
+train_x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)  # [np.random.randint(0,557,size=3),:]
 train_x2 = train_x1
 train_x3 = train_x1
 
@@ -352,9 +274,9 @@ full_train_x = torch.cat([train_x1, train_x2, train_x3])
 full_train_y = torch.cat([train_y1, train_y2, train_y3])
 
 model = MultitaskDeepGP(train_x1.shape)
-model = model.cuda()
+model = model
 likelihood = model.likelihood
-likelihood = likelihood.cuda()
+likelihood = likelihood
 
 import os
 
@@ -371,7 +293,7 @@ num_epochs = 1 if SMOKE_TEST else 500
 epochs_iter = range(num_epochs)
 for i in epochs_iter:
     optimizer.zero_grad()
-    output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1).cuda())
+    output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1))
     loss = -mll(output, full_train_y)
     #     output = model(train_x)
     #     loss = -mll(output, train_y)
@@ -414,8 +336,8 @@ y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 # hv_t=np.asarray(hv_t).reshape(1,1)
 #     hv_t = (HV_Calc(goal,ref,y_pareto_truth)).reshape(1,1)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
-train_y1t = torch.tensor(train_y1t).cuda()
-train_y2t = torch.tensor(train_y2t).cuda()
+train_y1t = torch.tensor(train_y1t)
+train_y2t = torch.tensor(train_y2t)
 
 for k in range(1500):
     # test_x2 = torch.linspace(0, 1, 51)
@@ -434,16 +356,16 @@ for k in range(1500):
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             ind = i * 5
             if i == 0:
-                test_xt = test_x[0:5, :].cuda()
+                test_xt = test_x[0:5, :]
                 test_i_task1 = torch.full(
                     (test_xt.shape[0], 1), dtype=torch.long, fill_value=0
-                ).cuda()
+                )
                 test_i_task2 = torch.full(
                     (test_xt.shape[0], 1), dtype=torch.long, fill_value=1
-                ).cuda()
+                )
                 test_i_task3 = torch.full(
                     (test_xt.shape[0], 1), dtype=torch.long, fill_value=2
-                ).cuda()
+                )
 
                 observed_pred_y1 = model.likelihood(
                     model(test_xt.float(), task_indices=test_i_task1.squeeze(1))
@@ -471,16 +393,16 @@ for k in range(1500):
                 var_t3 = (upper3.detach() - mean3) / 2
 
             else:
-                test_xt = test_x[ind : ind + 5, :].cuda()
+                test_xt = test_x[ind : ind + 5, :]
                 test_i_task1 = torch.full(
                     (test_xt.shape[0], 1), dtype=torch.long, fill_value=0
-                ).cuda()
+                )
                 test_i_task2 = torch.full(
                     (test_xt.shape[0], 1), dtype=torch.long, fill_value=1
-                ).cuda()
+                )
                 test_i_task3 = torch.full(
                     (test_xt.shape[0], 1), dtype=torch.long, fill_value=2
-                ).cuda()
+                )
 
                 observed_pred_y1 = model.likelihood(
                     model(test_xt.float(), task_indices=test_i_task1.squeeze(1))
@@ -510,18 +432,12 @@ for k in range(1500):
                 mean_t3 = torch.cat((mean_t3, mean3), 0)
                 var_t3 = torch.cat((var_t3, var3), 0)
 
-    test_xt = test_x[ind + 5 :, :].cuda()
+    test_xt = test_x[ind + 5 :, :]
     #         print(test_xt.float())
     if test_xt.numel() != 0:
-        test_i_task1 = torch.full(
-            (test_xt.shape[0], 1), dtype=torch.long, fill_value=0
-        ).cuda()
-        test_i_task2 = torch.full(
-            (test_xt.shape[0], 1), dtype=torch.long, fill_value=1
-        ).cuda()
-        test_i_task3 = torch.full(
-            (test_xt.shape[0], 1), dtype=torch.long, fill_value=2
-        ).cuda()
+        test_i_task1 = torch.full((test_xt.shape[0], 1), dtype=torch.long, fill_value=0)
+        test_i_task2 = torch.full((test_xt.shape[0], 1), dtype=torch.long, fill_value=1)
+        test_i_task3 = torch.full((test_xt.shape[0], 1), dtype=torch.long, fill_value=2)
 
         observed_pred_y1 = model.likelihood(
             model(test_xt.float(), task_indices=test_i_task1.squeeze(1))
@@ -599,35 +515,35 @@ for k in range(1500):
         data_y = np.concatenate(
             (train_y1.detach().cpu().numpy(), new_y.cpu().numpy().reshape(1)), axis=0
         )
-        train_x1 = torch.tensor(data_x).cuda()
-        train_y1 = torch.tensor(data_y).cuda()
+        train_x1 = torch.tensor(data_x)
+        train_y1 = torch.tensor(data_y)
         data_x = np.concatenate(
             (train_x2.detach().cpu().numpy(), np.array([new_x.cpu().numpy()])), axis=0
         )
         data_y = np.concatenate(
             (train_y2.detach().cpu().numpy(), new_y2.cpu().numpy().reshape(1)), axis=0
         )
-        train_x2 = torch.tensor(data_x).cuda()
-        train_y2 = torch.tensor(data_y).cuda()
+        train_x2 = torch.tensor(data_x)
+        train_y2 = torch.tensor(data_y)
         data_x = np.concatenate(
             (train_x3.detach().cpu().numpy(), np.array([new_x.cpu().numpy()])), axis=0
         )
         data_y = np.concatenate(
             (train_y3.detach().cpu().numpy(), new_y3.cpu().numpy().reshape(1)), axis=0
         )
-        train_x3 = torch.tensor(data_x).cuda()
-        train_y3 = torch.tensor(data_y).cuda()
+        train_x3 = torch.tensor(data_x)
+        train_y3 = torch.tensor(data_y)
 
         data_y = np.concatenate(
             (train_y1t.detach().cpu().numpy(), new_y.cpu().numpy().reshape(1)), axis=0
         )
 
-        train_y1t = torch.tensor(data_y).cuda()
+        train_y1t = torch.tensor(data_y)
 
         data_y = np.concatenate(
             (train_y2t.detach().cpu().numpy(), new_y2.cpu().numpy().reshape(1)), axis=0
         )
-        train_y2t = torch.tensor(data_y).cuda()
+        train_y2t = torch.tensor(data_y)
 
         yp = np.concatenate(
             (
@@ -689,24 +605,24 @@ for k in range(1500):
 
         #         data_x=np.concatenate((train_x1.detach().cpu().numpy(), np.array([new_x.cpu().numpy()])),axis=0)
         #         data_y=np.concatenate((train_y1.detach().cpu().numpy(),new_y.cpu().numpy().reshape(1)),axis=0)
-        #         train_x1=torch.tensor(data_x).cuda()
-        #         train_y1=torch.tensor(data_y).cuda()
+        #         train_x1=torch.tensor(data_x)
+        #         train_y1=torch.tensor(data_y)
         data_x = np.concatenate(
             (train_x2.detach().cpu().numpy(), np.array([new_x2.cpu().numpy()])), axis=0
         )
         data_y = np.concatenate(
             (train_y2.detach().cpu().numpy(), new_y2.cpu().numpy().reshape(1)), axis=0
         )
-        train_x2 = torch.tensor(data_x).cuda()
-        train_y2 = torch.tensor(data_y).cuda()
+        train_x2 = torch.tensor(data_x)
+        train_y2 = torch.tensor(data_y)
         data_x = np.concatenate(
             (train_x3.detach().cpu().numpy(), np.array([new_x3.cpu().numpy()])), axis=0
         )
         data_y = np.concatenate(
             (train_y3.detach().cpu().numpy(), new_y3.cpu().numpy().reshape(1)), axis=0
         )
-        train_x3 = torch.tensor(data_x).cuda()
-        train_y3 = torch.tensor(data_y).cuda()
+        train_x3 = torch.tensor(data_x)
+        train_y3 = torch.tensor(data_y)
 
     train_i_task1 = torch.full((train_x1.shape[0], 1), dtype=torch.long, fill_value=0)
     train_i_task2 = torch.full((train_x2.shape[0], 1), dtype=torch.long, fill_value=1)
@@ -738,9 +654,7 @@ for k in range(1500):
     # model = MultitaskGPModel((full_train_x, full_train_i), full_train_y, likelihood)
 
     model = MultitaskDeepGP(train_x1.shape)
-    model = model.cuda()
     likelihood = model.likelihood
-    likelihood = likelihood.cuda()
 
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
@@ -752,7 +666,7 @@ for k in range(1500):
     epochs_iter = range(num_epochs)
     for i in epochs_iter:
         optimizer.zero_grad()
-        output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1).cuda())
+        output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1))
         loss = -mll(output, full_train_y)
         #        epochs_iter.set_postfix(loss=loss.item())
         loss.backward()

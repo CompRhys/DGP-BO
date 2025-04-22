@@ -1,94 +1,11 @@
 import multiprocessing
 import os
-import sys
 from copy import deepcopy
 
 import gpytorch
 import numpy as np
-import pandas as pd
 import torch
 from gpytorch.distributions import MultivariateNormal
-from joblib import Parallel, delayed
-
-from dgp_bo.dirichlet import dirlet5D
-from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
-
-index = sys.argv[1]
-file_out = sys.argv[0][:-3] + sys.argv[1]
-
-filename_global = "5space-md16-tec-new.h5"
-filename_global2 = "5space-mor.h5"
-
-
-def bmft(x, bmf="tec", filename=filename_global):
-    xt = x.numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        #         print(x,y,z,u,v,"###################################333")
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11))
-
-
-def cft(x, bmf="bulkmodul_eq", filename=filename_global2):
-    xt = x.numpy()
-
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        #         print(x,y,z,u,v,"###################################333")
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        #         print(c*10**7,"****")
-
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.array(c11))
-
-
-def c2ft(x, bmf="volume_eq", filename=filename_global2):
-    xt = x.numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        #         print(x,y,z,u,v,"###################################333")
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        #         print(c*10**7,"****")
-
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11))
-
-
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 from gpytorch.means import ConstantMean, LinearMean
@@ -98,15 +15,18 @@ from gpytorch.variational import (
     CholeskyVariationalDistribution,
     VariationalStrategy,
 )
+from joblib import Parallel, delayed
 
-# from matplotlib import pyplot as plt
+from dgp_bo import DATA_DIR
+from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
+from dgp_bo.utils import bmft, c2ft, cft
 
 SMOKE_TEST = "CI" in os.environ
-# %matplotlib inline
 
-# Here's a simple standard layer
-
-# Here's a simple standard layer
+file_out = os.path.basename(__file__)[:-3]
+filename_global = os.path.join(DATA_DIR, "5space-mor.h5")
+filename_global2 = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 
 class DGPHiddenLayer(DeepGPLayer):
@@ -219,7 +139,7 @@ ref = np.array([[0, 0]])
 goal = np.array([[1, 1]])
 opt_imp = []
 
-#     x1 = torch.from_numpy(normalize(torch.rand((2, 5)), axis=1, norm='l1')).cuda()#normalize(torch.rand((2, 5)), axis=1, norm='l1')
+#     x1 = torch.from_numpy(normalize(torch.rand((2, 5)), axis=1, norm='l1'))#normalize(torch.rand((2, 5)), axis=1, norm='l1')
 x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)  # [np.random.randint(0,557,size=3),:]
 x2 = x1
 x3 = x1
@@ -410,8 +330,8 @@ for k in range(500):
     #         test_x=torch.from_numpy((dirlet5D(100,5))/32)
     #         with torch.no_grad(), gpytorch.settings.fast_pred_var():
     # #             test_x = lhs(N_dim,100)
-    # #             test_x=torch.from_numpy(normalize(test_x, axis=1, norm='l1')).cuda()
-    #             test_x=torch.from_numpy((dirlet5D(100,5))/32).cuda()
+    # #             test_x=torch.from_numpy(normalize(test_x, axis=1, norm='l1'))
+    #             test_x=torch.from_numpy((dirlet5D(100,5))/32)
     #             mean_t, var_t = model.predict(test_x.float())
     #             lower = mean_t - 2 * var_t.sqrt()
     #             upper = mean_t + 2 * var_t.sqrt()

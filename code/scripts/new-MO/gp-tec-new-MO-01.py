@@ -1,98 +1,21 @@
 import multiprocessing
 import os
-import sys
 
 import gpytorch
 import numpy as np
-import pandas as pd
 import torch
 from joblib import Parallel, delayed
 
+from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirlet5D
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
+from dgp_bo.utils import bmft, cft
 
-index = sys.argv[1]
-file_out = sys.argv[0][:-3] + sys.argv[1]
+SMOKE_TEST = "CI" in os.environ
 
-
-filename_global = "5space-mor.h5"
-filename_global2 = "5space-md16-tec-new.h5"
-
-
-def bmft(x, bmf="tec", filename=filename_global2):
-    xt = x.numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        try:
-            c = df1.loc[
-                (df1["Fe"] == x)
-                & (df1["Cr"] == y)
-                & (df1["Ni"] == z)
-                & (df1["Co"] == u)
-                & (df1["Cu"] == v)
-            ][bmf].values[0]
-        except:
-            c = df1.loc[
-                (df1["Fe"] == x)
-                & (df1["Cr"] == y)
-                & (df1["Ni"] == z)
-                & (df1["Co"] == u)
-                & (df1["Cu"] == v)
-            ][bmf].values
-            # print(x,y,z,u,v)
-
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11))
-
-
-def cft(x, bmf="bulkmodul_eq", filename=filename_global):
-    xt = x.numpy()
-
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.array(c11))
-
-
-def c2ft(x, bmf="quasi_q", filename=filename_global):
-    xt = x.numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        # print(c,"****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c * 10**6)
-
-    return torch.from_numpy(np.asarray(c11))
-
-
-# import matplotlib.pyplot as plt
+file_out = os.path.basename(__file__)[:-3]
+filename_global = os.path.join(DATA_DIR, "5space-mor.h5")
+filename_global2 = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 
 class ExactGPModel(gpytorch.models.ExactGP):
@@ -124,8 +47,8 @@ gp_std1_lst = []
 gp_std2_lst = []
 
 
-ref = np.array([[0, 0]])
-goal = np.array([[1, 1]])
+ref = np.array([[180, 0]])
+goal = np.array([[0, 1]])
 opt_imp = []
 debug_lst = []
 debug_lst2 = []
@@ -150,7 +73,7 @@ class ExactGPModel(gpytorch.models.ExactGP):
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(
             gpytorch.kernels.RBFKernel(
-                lengthscale_constraint=gpytorch.constraints.Interval(0.3, 0.8)
+                lengthscale_constraint=gpytorch.constraints.Interval(0.2, 0.8)
             )
         )
 
@@ -299,7 +222,7 @@ test_x = torch.from_numpy((dirlet5D(550, 5)) / 32)
 test_x2 = test_x
 test_x3 = test_x
 test_x4 = test_x
-for k in range(500):
+for k in range(700):
     # test_x2 = torch.linspace(0, 1, 51)
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
@@ -315,7 +238,7 @@ for k in range(500):
             ind = i * 5
             if i == 0:
                 test_xt = test_x[0:5, :]
-                print(test_xt, "******************************")
+                # print(test_xt,"******************************")
                 # test_i_task1 = torch.full((test_xt.shape[0],1), dtype=torch.long, fill_value=0)
                 observed_pred_y1 = likelihood1(model1(test_xt.float()))
 
@@ -473,6 +396,7 @@ for k in range(500):
     new_x = test_x.detach()[x_star]
 
     new_y1 = bmft(new_x.unsqueeze(0))
+    print(new_y1)
     data_x = np.concatenate((x1.numpy(), new_x.unsqueeze(0).numpy()), axis=0)
     #         try:
     # print(new_y1.numpy())
@@ -515,6 +439,7 @@ for k in range(500):
     # hv_t=np.asarray(hv_t).reshape(1,1)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
     hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
+    print(hv_t, "hv_t")
 
     model1 = ExactGPModel(x1, y1, likelihood1)
     model2 = ExactGPModel(x2, y2, likelihood2)

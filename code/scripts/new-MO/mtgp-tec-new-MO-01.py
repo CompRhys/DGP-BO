@@ -1,103 +1,22 @@
-import sys
-
-import pandas as pd
-
-index = sys.argv[1]
-file_out = sys.argv[0][:-3] + sys.argv[1]
-
-# from mymod import call_Curtin_Model , call_kkr
 import multiprocessing
 import os
 
 import gpytorch
-
-# from matplotlib import pyplot as plt
 import numpy as np
 import torch
+from gpytorch import settings
 from joblib import Parallel, delayed
 
-# from matplotlib import pyplot as plt
-
+from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirlet5D
-
-# import matlab.engine
-# eng = matlab.engine.start_matlab()
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
+from dgp_bo.utils import bmft, c2ft, cft
 
-# import matplotlib.pyplot as plt
-# from acquisitionFuncdebug2 import expected_improvement
+SMOKE_TEST = "CI" in os.environ
 
-filename_global = "5space-mor.h5"
-filename_global2 = "5space-md16-tec-new.h5"
-
-
-def bmft(x, bmf="tec", filename=filename_global2):
-    xt = x.cpu().numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        # print(c,"****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11))  # .cuda()
-
-    return torch.from_numpy(y)
-
-
-def cft(x, bmf="bulkmodul_eq", filename=filename_global):
-    xt = x.cpu().numpy()
-
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        # print(c,"****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.array(c11))  # .cuda()
-
-
-def c2ft(x, bmf="volume_eq", filename=filename_global):
-    xt = x.cpu().numpy()
-    c11 = []
-    conc = np.asarray([np.asarray([i, j, k, l, m]) for i, j, k, l, m in xt])
-    for x, y, z, u, v in conc:
-        df1 = pd.read_hdf(filename)
-
-        c = df1.loc[
-            (df1["Fe"] == x)
-            & (df1["Cr"] == y)
-            & (df1["Ni"] == z)
-            & (df1["Co"] == u)
-            & (df1["Cu"] == v)
-        ][bmf].values[0]
-        # print(c,"****")
-        # print(df1.loc[(df1["conc_Fe"]==x)]["C11"].values[0])
-        c11.append(c)
-
-    return torch.from_numpy(np.asarray(c11))  # .cuda()
-
-
-from gpytorch import settings
+file_out = os.path.basename(__file__)[:-3]
+filename_global = os.path.join(DATA_DIR, "5space-mor.h5")
+filename_global2 = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 mtgp_max_lst = []
 mtgp_y_lst = []
@@ -116,8 +35,8 @@ mtgp_std1_lst = []
 mtgp_std2_lst = []
 mtgp_std3_lst = []
 
-ref = np.array([[0, 0]])
-goal = np.array([[1, 1]])
+ref = np.array([[180, 0]])
+goal = np.array([[0, 1]])
 opt_imp = []
 settings.debug.off()
 
@@ -230,7 +149,7 @@ hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
 
 test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
-for k in range(500):
+for k in range(700):
     print("**************", k, "************************")
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
@@ -425,6 +344,7 @@ for k in range(500):
     # hv_t=np.asarray(hv_t).reshape(1,1)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
     hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
+    print(hv_t, "hv_t")
 
     likelihood = gpytorch.likelihoods.GaussianLikelihood(
         noise_constraint=gpytorch.constraints.Interval(0.001, 10)
@@ -488,7 +408,7 @@ for k in range(500):
         output = model(full_train_x, full_train_i)
         loss = -mll(output, full_train_y)
         loss.backward()
-        # print('Iter %d/500 - Loss: %.3f' % (i + 1, loss.item()))
+        # print('Iter %d/50 - Loss: %.3f' % (i + 1, loss.item()))
 
         #             print(model.task_covar_module)
         optimizer.step()
