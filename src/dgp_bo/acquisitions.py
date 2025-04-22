@@ -217,11 +217,11 @@ def upper_conf_bound(kt, y, std):
         Upper confidence bound values for all test points.
 
     """
-    UCB = y + kt * std
-    max_val = np.max(UCB)
-    x_star = np.where(max_val == UCB)[0]
+    ucb = y + kt * std
+    max_val = np.max(ucb)
+    x_star = np.where(max_val == ucb)[0]
 
-    return max_val, x_star[0], UCB
+    return max_val, x_star[0], ucb
 
 
 def thompson_sampling(y, std):

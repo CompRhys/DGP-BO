@@ -3,129 +3,30 @@ import os
 from copy import deepcopy
 
 import gpytorch
+import h5py
 import numpy as np
 import torch
-from gpytorch.distributions import MultivariateNormal
-from gpytorch.kernels import MaternKernel, ScaleKernel
-from gpytorch.likelihoods import MultitaskGaussianLikelihood
-from gpytorch.means import ConstantMean, LinearMean
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
-from gpytorch.models.deep_gps import DeepGP, DeepGPLayer
-from gpytorch.variational import (
-    CholeskyVariationalDistribution,
-    VariationalStrategy,
-)
 from joblib import Parallel, delayed
 
 from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirlet5D
+from dgp_bo.mtdgp import MultitaskIsoDeepGP
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import bmft, c2ft, cft
 
+# %%
 SMOKE_TEST = "CI" in os.environ
+TRAINING_ITERATIONS = 2 if SMOKE_TEST else 500
+BO_ITERATIONS = 10 if SMOKE_TEST else 500
 
 file_out = os.path.basename(__file__)[:-3]
-filename_global = os.path.join(DATA_DIR, "5space-mor.h5")
-filename_global2 = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
-
-
-class DGPHiddenLayer(DeepGPLayer):
-    def __init__(self, input_dims, output_dims, num_inducing=128, linear_mean=True):
-        inducing_points = torch.randn(output_dims, num_inducing, input_dims)
-        batch_shape = torch.Size([output_dims])
-
-        variational_distribution = CholeskyVariationalDistribution(
-            num_inducing_points=num_inducing, batch_shape=batch_shape
-        )
-        variational_strategy = VariationalStrategy(
-            self,
-            inducing_points,
-            variational_distribution,
-            learn_inducing_locations=True,
-            jitter_val=1e-3,
-        )
-
-        super().__init__(variational_strategy, input_dims, output_dims)
-        self.mean_module = ConstantMean() if linear_mean else LinearMean(input_dims)
-        self.covar_module = ScaleKernel(
-            MaternKernel(
-                nu=2.5,
-                batch_shape=batch_shape,
-                ard_num_dims=input_dims,
-                lengthscale_constraint=gpytorch.constraints.Interval(0.2, 0.8),
-            ),  # ,lengthscale_constraint=gpytorch.constraints.Interval(0.3, 0.8)
-            batch_shape=batch_shape,
-            ard_num_dims=None,
-        )
-
-    def forward(self, x):
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return MultivariateNormal(mean_x, covar_x)
-
+MOR_FILENAME = os.path.join(DATA_DIR, "5space-mor.h5")
+TEC_FILENAME = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 num_tasks = 3
 num_hidden_dgp_dims = 3
 # num_hidden_dgp_dims2 = 3
-
-
-class MultitaskDeepGP(DeepGP):
-    def __init__(self, train_x_shape):
-        hidden_layer = DGPHiddenLayer(
-            input_dims=train_x_shape[-1],
-            output_dims=num_hidden_dgp_dims,
-            linear_mean=True,
-        )
-        last_layer = DGPHiddenLayer(
-            input_dims=hidden_layer.output_dims,
-            output_dims=num_tasks,
-            linear_mean=False,
-        )
-        #         last_layer2 = DGPHiddenLayer(
-        #             input_dims=last_layer.output_dims,
-        #             output_dims=num_tasks,
-        #             linear_mean=False
-        #         )
-
-        super().__init__()
-
-        self.hidden_layer = hidden_layer
-        self.last_layer = last_layer
-        #         self.last_layer2=last_layer2
-        # We're going to use a ultitask likelihood instead of the standard GaussianLikelihood
-        self.likelihood = MultitaskGaussianLikelihood(
-            num_tasks=num_tasks,
-            noise_constraint=gpytorch.constraints.Interval(0.001, 10),
-        )  # ,noise_constraint=gpytorch.constraints.Interval(0.001, 10)
-
-    def forward(self, inputs):
-        hidden_rep1 = self.hidden_layer(inputs)
-        return self.last_layer(hidden_rep1)
-        #         output2 = self.last_layer2(output)
-
-    def predict(self, test_x):
-        with torch.no_grad():
-            # The output of the model is a multitask MVN, where both the data points
-            # and the tasks are jointly distributed
-            # To compute the marginal predictive NLL of each data point,
-            # we will call `to_data_independent_dist`,
-            # which removes the data cross-covariance terms from the distribution.
-            preds = model.likelihood(model(test_x)).to_data_independent_dist()
-
-        return preds.mean.mean(0), preds.variance.mean(0)
-
-
-dgp_max_lst = []
-dgp_y_lst = []
-dgp_x_lst = []
-dgp_test_lst = []
-dgp_pred_lst = []
-dgp_std_lst = []
-dgp_EI_lst = []
-dgp_query_lst = []
-dgp_max_tmp = []
-dgp_conc_lst = []
-
 
 dgp_mean1_lst = []
 dgp_mean2_lst = []
@@ -133,21 +34,18 @@ dgp_mean3_lst = []
 dgp_std1_lst = []
 dgp_std2_lst = []
 dgp_std3_lst = []
-# dgp_max_tmp.append(np.arange(1,5))
-hv_total_lst = []
+
 ref = np.array([[180, 0]])
 goal = np.array([[0, 1]])
-opt_imp = []
 
-#     x1 = torch.from_numpy(normalize(torch.rand((2, 5)), axis=1, norm='l1'))#normalize(torch.rand((2, 5)), axis=1, norm='l1')
-x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)  # [np.random.randint(0,557,size=3),:]
+x1 = torch.from_numpy((dirlet5D(2, 5)) / 32)
 x2 = x1
 x3 = x1
 
 
-y1 = bmft(x1)  # /bmft(x1)[0]
-y2 = cft(x2)  # /cft(x2)[0]
-y3 = c2ft(x3)  # /c2ft(x3)[0]
+y1 = bmft(x1, TEC_FILENAME)
+y2 = cft(x2, MOR_FILENAME)
+y3 = c2ft(x3, MOR_FILENAME)
 
 y1 = torch.stack(
     [
@@ -158,124 +56,17 @@ y1 = torch.stack(
     -1,
 )
 
-
-# Here's a simple standard layer
-
-# Here's a simple standard layer
-
-
-class DGPHiddenLayer(DeepGPLayer):
-    def __init__(self, input_dims, output_dims, num_inducing=64, linear_mean=True):
-        inducing_points = torch.randn(output_dims, num_inducing, input_dims)
-        batch_shape = torch.Size([output_dims])
-
-        variational_distribution = CholeskyVariationalDistribution(
-            num_inducing_points=num_inducing, batch_shape=batch_shape
-        )
-
-        #             variational_strategy = gpytorch.variational.BatchDecoupledVariationalStrategy(
-        #                  self, inducing_points, variational_distribution, learn_inducing_locations=True,
-        #                  mean_var_batch_dim=-1
-        #              )
-
-        variational_strategy = VariationalStrategy(
-            self,
-            inducing_points,
-            variational_distribution,
-            learn_inducing_locations=True,
-            jitter_val=1e-3,
-        )
-
-        #             grid_bounds=[(0, 100),(0, 100),(0, 100),(0, 100),(0, 100)]
-        #             grid_size=64
-        #             variational_strategy = gpytorch.variational.GridInterpolationVariationalStrategy(
-        #                     self, grid_size=grid_size, grid_bounds=[grid_bounds],
-        #                     variational_distribution=variational_distribution,
-        #                 )
-
-        super().__init__(variational_strategy, input_dims, output_dims)
-        self.mean_module = ConstantMean() if linear_mean else LinearMean(input_dims)
-        self.covar_module = ScaleKernel(
-            MaternKernel(
-                nu=2.5,
-                batch_shape=batch_shape,
-                ard_num_dims=None,
-                lengthscale_constraint=gpytorch.constraints.Interval(0.2, 0.8),
-            ),  # ,lengthscale_constraint=gpytorch.constraints.Interval(0.3, 0.8)
-            batch_shape=batch_shape,
-            ard_num_dims=None,
-        )
-
-    def forward(self, x):
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return MultivariateNormal(mean_x, covar_x)
-
-
 num_tasks = 3
 num_hidden_dgp_dims = 4
-# num_hidden_dgp_dims2 = 3
 
-
-class MultitaskDeepGP(DeepGP):
-    def __init__(self, train_x_shape):
-        hidden_layer = DGPHiddenLayer(
-            input_dims=train_x_shape[-1],
-            output_dims=num_hidden_dgp_dims,
-            linear_mean=True,
-        )
-        last_layer = DGPHiddenLayer(
-            input_dims=hidden_layer.output_dims,
-            output_dims=num_tasks,
-            linear_mean=False,
-        )
-        #         last_layer2 = DGPHiddenLayer(
-        #             input_dims=last_layer.output_dims,
-        #             output_dims=num_tasks,
-        #             linear_mean=False
-        #         )
-
-        super().__init__()
-
-        self.hidden_layer = hidden_layer
-        self.last_layer = last_layer
-        #         self.last_layer2=last_layer2
-        # We're going to use a ultitask likelihood instead of the standard GaussianLikelihood
-
-        self.likelihood = MultitaskGaussianLikelihood(
-            num_tasks=num_tasks,
-            noise_constraint=gpytorch.constraints.Interval(0.001, 10),
-        )  # ,noise_constraint=gpytorch.constraints.Interval(0.001, 10)
-
-    def forward(self, inputs):
-        hidden_rep1 = self.hidden_layer(inputs)
-        return self.last_layer(hidden_rep1)
-        #         output2 = self.last_layer2(output)
-
-    def predict(self, test_x):
-        with torch.no_grad():
-            # The output of the model is a multitask MVN, where both the data points
-            # and the tasks are jointly distributed
-            # To compute the marginal predictive NLL of each data point,
-            # we will call `to_data_independent_dist`,
-            # which removes the data cross-covariance terms from the distribution.
-            preds = model.likelihood(model(test_x)).to_data_independent_dist()
-
-        return preds.mean.mean(0), preds.variance.mean(0)
-
-
-model = MultitaskDeepGP(x1.shape)
-model = model
+model = MultitaskIsoDeepGP(x1.shape)
 likelihood = model.likelihood
-likelihood = likelihood
 
 model.train()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-num_epochs = 1 if SMOKE_TEST else 500
-epochs_iter = num_epochs
-for i in range(epochs_iter):
+for _i in range(TRAINING_ITERATIONS):
     optimizer.zero_grad()
     output = model(x1.float())
     loss = -mll(output, y1)
@@ -295,56 +86,18 @@ yp = np.concatenate(
 yp_query = yp.reshape(train_y1.shape[0], 2)
 
 N_obj = 2
-# data_x=np.concatenate((data_x,x_query.reshape(1,N_dim)),axis=0)
 data_yp = yp_query
 
-
-# y_pareto_truth,ind=eng.Pareto_finder_py(matlab.double(data_y),nargout=2)
-# y_pareto_truth=np.asarray(y_pareto_truth)
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
-# ind=np.asarray(ind)
-# ind=ind.astype(int)
-# ind=1
-# x_pareto_truth=data_x[ind]
-# hv_t=eng.HV(matlab.double(y_pareto_truth),nargout=1)
-# hv_t=np.asarray(hv_t).reshape(1,1)
-#     hv_t = (HV_Calc(goal,ref,y_pareto_truth)).reshape(1,1)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
 test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
-# test_x = lhs(N_dim,100)
-# test_x=torch.from_numpy(normalize(test_x, axis=1, norm='l1'))
-# test_x2 = test_x
-# test_x3 = test_x
-# test_x4 = test_x
-for k in range(700):
+for k in range(BO_ITERATIONS):
     print("****************", k, "********************")
-    # test_x2 = torch.linspace(0, 1, 51)
-    # torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
     xi = 0.9
-    # test_x = torch.linspace(0, 1, 51)
-
-    #         test_x = lhs(N_dim,100)
-    #         test_x=torch.from_numpy(normalize(test_x, axis=1, norm='l1'))
-    #         test_x=torch.from_numpy((dirlet5D(100,5))/32)
-    #         with torch.no_grad(), gpytorch.settings.fast_pred_var():
-    # #             test_x = lhs(N_dim,100)
-    # #             test_x=torch.from_numpy(normalize(test_x, axis=1, norm='l1'))
-    #             test_x=torch.from_numpy((dirlet5D(100,5))/32)
-    #             mean_t, var_t = model.predict(test_x.float())
-    #             lower = mean_t - 2 * var_t.sqrt()
-    #             upper = mean_t + 2 * var_t.sqrt()
-
     e = True
     counter2 = 0
-    #         while(e and (counter2<10)):
-
-    #     test_x = lhs(N_dim,500)
-    #             try:
-    #                 if (counter2>3):
-    #                     test_x=torch.from_numpy((dirlet5D(100,5))/32)
-    #                 else:
 
     test_x = torch.from_numpy((dirlet5D(500, 5)) / 32)
     for i in range(int(test_x.shape[0] / 5)):
@@ -362,7 +115,6 @@ for k in range(700):
                 var_t = torch.cat((var_t, var), 0)
 
     test_xt = test_x[ind + 5 :, :]
-    #         print(test_xt.float())
     if test_xt.numel() != 0:
         mean, var = model.predict(test_xt.float())
         mean_t = torch.cat((mean_t, mean), 0)
@@ -370,14 +122,9 @@ for k in range(700):
 
     task = 0
 
-    #         lower = mean_t - 2 * var_t.sqrt()
-    #         upper = mean_t + 2 * var_t.sqrt()
-
     mean_t1 = mean_t[:, 0]
-    # print(mean_t1.shape,"%%%%%%%%%%%%%%%%%%%%%Debug%%%%%%%%%%%%%%%%%%%%%")
     mean_t2 = mean_t[:, 1]
     mean_t3 = mean_t[:, 2]
-    # print(mean_t2.shape,"%%%%%%%%%%%%%%%%%%%%%Debug%%%%%%%%%%%%%%%%%%%%%")
     var_t1 = var_t[:, 0].sqrt()
     var_t2 = var_t[:, 1].sqrt()
     var_t3 = var_t[:, 1].sqrt()
@@ -405,44 +152,19 @@ for k in range(700):
 
     x_star = np.argmax(ehvi)
 
-    #     kld_mv = np.log(std2/std1) + (std1**2 + (mean1 - mean2)**2)/(2*std2**2) - 0.5
-    #                 max_val, x_star, EI = expected_improvement(np.max(y1[:,0].detach().cpu().numpy()), xi,mean_t[:, task].cpu().numpy(),var_t[:, task].sqrt().cpu().numpy() )#(upper[:, task].cpu().numpy()-mean_t[:, task].cpu().numpy())/2
-
     new_x = test_x.detach()[x_star]
-    # new_x=torch.rand(100)[x_star]
-
-    #         if b==2:
-    #             dgp_pred_lst.append(mean_t[:, task].cpu().numpy())
-    #             dgp_std_lst.append(var_t[:, task].sqrt().cpu().numpy() )
-    #             dgp_EI_lst.append(EI)
-    #             #gp_query_lst()
-    #             dgp_test_lst.append(test_x)
-    #             dgp_query_lst.append(new_x)
-    #         test_x = torch.cat((test_x[:x_star],test_x[x_star+1:]))
-    #     train_y1 = train_x1 ** (2)
-    #     train_y2 = (train_x2 **(2))*(-1)
-    new_y = bmft(new_x.unsqueeze(0))
-    new_y2 = cft(new_x.unsqueeze(0))
-    new_y3 = c2ft(new_x.unsqueeze(0))
-
-    #     new_y= torch.cos(new_x * (2 * math.pi))# + torch.randn(new_x.size()) * 0.2
+    new_y = bmft(new_x.unsqueeze(0), TEC_FILENAME)
+    new_y2 = cft(new_x.unsqueeze(0), MOR_FILENAME)
+    new_y3 = c2ft(new_x.unsqueeze(0), MOR_FILENAME)
 
     data_x = np.concatenate((x1.detach().numpy(), np.array([new_x.numpy()])), axis=0)
     data_y = np.concatenate((y1[:, 0].detach().numpy(), new_y.numpy()), axis=0)
     x1_t = torch.tensor(data_x)
     train_y2_t = torch.tensor(data_y)
-    #     data=np.concatenate((train_x1.detach().numpy(),new_x.numpy().reshape(1)),axis=0)
     data_y = np.concatenate((y1[:, 1].detach().numpy(), new_y2.numpy()), axis=0)
-    #     train_x3=torch.tensor(data_x)
     train_y3_t = torch.tensor(data_y)
-    #     data_x=np.concatenate((train_x1[:, 2].detach().numpy(),new_x.numpy().reshape(1)),axis=0)
     data_y = np.concatenate((y1[:, 2].detach().numpy(), new_y3.numpy()), axis=0)
-    #         train_x4=torch.tensor(data_x)
     train_y4_t = torch.tensor(data_y)
-    #     data_x=np.concatenate((train_x1[:, 3].detach().numpy(),new_x.numpy().reshape(1)),axis=0)
-    #     data_y=np.concatenate((train_y1[:, 3].detach().numpy(),new_y4.numpy().reshape(1)),axis=0)
-    # #     train_x5=torch.tensor(data_x)
-    #     train_y5=torch.tensor(data_y)
 
     y1_t = torch.stack(
         [
@@ -465,180 +187,76 @@ for k in range(700):
         axis=1,
     )
     yp_query = yp.reshape(yp.shape[0], 2)
-    # print(yp_query)
     N_obj = 2
-    # data_x=np.concatenate((data_x,x_query.reshape(1,N_dim)),axis=0)
     data_yp = yp
 
-    # y_pareto_truth,ind=eng.Pareto_finder_py(matlab.double(data_y),nargout=2)
-    # y_pareto_truth=np.asarray(y_pareto_truth)
     y_pareto_truth, ind = Pareto_finder(data_yp, goal)
-    # ind=np.asarray(ind)
-    # ind=ind.astype(int)
-    # ind=1
-    # x_pareto_truth=data_x[ind]
-    # hv_t=eng.HV(matlab.double(y_pareto_truth),nargout=1)
-    # hv_t=np.asarray(hv_t).reshape(1,1)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
     hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
     print(hv_t, "hv_t")
-    #     if (k%10)==0:
-    #         #new_y1= torch.sin(new_x * (2 * math.pi))
-    #         new_y1=bmft(torch.Tensor([new_x]))
-    #         data_x=np.concatenate((train_x1.numpy(),new_x.numpy().reshape(1)),axis=0)
-    #         data_y=np.concatenate((train_y1,new_y1.numpy().reshape(1)),axis=0)
-    #         train_x1=torch.tensor(data_x)
-    #         train_y1=torch.tensor(data_y)
-
-    #     test_x2=test_x2[test_x2!=new_x.item()]
-
-    #     train_i_task1 = torch.full((train_x1.shape[0],1), dtype=torch.long, fill_value=0)
-    #     train_i_task2 = torch.full((train_x2.shape[0],1), dtype=torch.long, fill_value=1)
-    #     train_i_task3 = torch.full((train_x3.shape[0],1), dtype=torch.long, fill_value=2)
-    #     train_i_task4 = torch.full((train_x4.shape[0],1), dtype=torch.long, fill_value=3)
-
-    #     full_train_x = torch.cat([train_x1, train_x2,train_x3,train_x4])
-    #     full_train_i = torch.cat([train_i_task1, train_i_task2,train_i_task3,train_i_task4])
-    #     full_train_y = torch.cat([train_y1, train_y2,train_y3,train_y4])
-
-    # model = MultitaskGPModel((full_train_x, full_train_i), full_train_y, likelihood)
-    # model = MultitaskDeepGP(x1.shape)
-    model = MultitaskDeepGP(x1_t.shape)
-    model = model
+    model = MultitaskIsoDeepGP(x1_t.shape)
     likelihod = model.likelihood
-    likelihood = likelihood
 
     model.train()
     likelihood.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.9)
     mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-    num_epochs = 1 if SMOKE_TEST else 200
-
-    epochs_iter = range(num_epochs)
-    for i in epochs_iter:
+    for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
         output = model(x1_t.float())
         loss = -mll(output, y1_t)
 
         loss.backward()
-        #             print('Iter {}/{} - Loss: {}   lengthscale: {} lengthscale: {}  noise: {}'.format(
-        #                 i + 1, num_epochs, loss.item(),
-        #                 model.hidden_layer.covar_module.base_kernel.lengthscale,
-        #                 model.last_layer.covar_module.base_kernel.lengthscale,
-
-        #                 model.likelihood.noise
-        #             ))
         optimizer.step()
-    # print("yooooooooooooooooooooooooo")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-    num_epochs = 1 if SMOKE_TEST else 200
-
-    epochs_iter = range(num_epochs)
-    for i in epochs_iter:
+    for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
         output = model(x1_t.float())
         loss = -mll(output, y1_t)
 
         loss.backward()
-        #             print('Iter {}/{} - Loss: {}   lengthscale: {} lengthscale: {}  noise: {}'.format(
-        #                 i + 1, num_epochs, loss.item(),
-        #                 model.hidden_layer.covar_module.base_kernel.lengthscale,
-        #                 model.last_layer.covar_module.base_kernel.lengthscale,
-
-        #                 model.likelihood.noise
-        #             ))
         optimizer.step()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
     mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
 
-    num_epochs = 1 if SMOKE_TEST else 100
-
-    epochs_iter = range(num_epochs)
-    for i in epochs_iter:
+    for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
         output = model(x1_t.float())
         loss = -mll(output, y1_t)
 
         loss.backward()
-        #             print('Iter {}/{} - Loss: {}   lengthscale: {} lengthscale: {}  noise: {}'.format(
-        #                 i + 1, num_epochs, loss.item(),
-        #                 model.hidden_layer.covar_module.base_kernel.lengthscale,
-        #                 model.last_layer.covar_module.base_kernel.lengthscale,
-
-        #                 model.likelihood.noise
-        #             ))
         optimizer.step()
         e = False
-
-    #             except Exception as error:
-    #                 print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  EXCEPTION %%%%%%%%%%%%%%%%%%%",error)
-    #                 e=True
-
-    #             counter2=counter2+1
 
     x1 = deepcopy(x1_t)
     y1 = deepcopy(y1_t)
     train_y2 = deepcopy(train_y2_t)
-    #     data_x=np.concatenate((train_x1.detach().numpy(),new_x.numpy().reshape(1)),axis=0)
-
     train_y3 = deepcopy(train_y3_t)
-
     train_y4 = deepcopy(train_y4_t)
-    #         hv_truth=hv_truth_t
     model.eval()
     likelihood.eval()
-    #     with torch.no_grad(), gpytorch.settings.fast_pred_var():
-    #         test_x = lhs(N_dim,100)
-    #         test_x=torch.from_numpy(normalize(test_x, axis=1, norm='l1'))
-    #         mean, var = model.predict(test_x.float())
-    #         lower = mean - 2 * var.sqrt()
-    #         upper = mean + 2 * var.sqrt()
-#         if b==2:
-#             dgp_y_lst.append(y1[:,0].detach().cpu().numpy())
-#             dgp_x_lst.append(x1.detach().cpu().numpy())
-#         if counter2!=100:
-#             dgp_max_tmp[0]=y1[:,0].detach().cpu().numpy()
 
+# %%
+with h5py.File(file_out + ".h5", "w") as f:
+    f.create_dataset("hv_truth", data=hv_truth)
 
-# break
+    # Training data
+    train_data = f.create_group("train")
+    train_data.create_dataset("x1", data=x1)  # Note: x2 and x3 are same as x1
+    train_data.create_dataset("y1", data=train_y2)
+    train_data.create_dataset("y2", data=train_y3)
+    train_data.create_dataset("y3", data=train_y4)
 
-import pickle
-
-with open(file_out + "-hv.pl", "wb") as handle:
-    pickle.dump(hv_truth, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-queryx1.pl", "wb") as handle:
-    pickle.dump(x1, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-queryx2.pl", "wb") as handle:
-    pickle.dump(x1, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-with open(file_out + "-queryx3.pl", "wb") as handle:
-    pickle.dump(x1, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-with open(file_out + "-queryy1.pl", "wb") as handle:
-    pickle.dump(train_y2, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-queryy2.pl", "wb") as handle:
-    pickle.dump(train_y3, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-queryy3.pl", "wb") as handle:
-    pickle.dump(train_y4, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-with open(file_out + "-mean1.pl", "wb") as handle:
-    pickle.dump(dgp_mean1_lst, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-mean2.pl", "wb") as handle:
-    pickle.dump(dgp_mean2_lst, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-with open(file_out + "-mean3.pl", "wb") as handle:
-    pickle.dump(dgp_mean3_lst, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-with open(file_out + "-std1.pl", "wb") as handle:
-    pickle.dump(dgp_std1_lst, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-std2.pl", "wb") as handle:
-    pickle.dump(dgp_std2_lst, handle, protocol=pickle.HIGHEST_PROTOCOL)
-with open(file_out + "-std3.pl", "wb") as handle:
-    pickle.dump(dgp_std3_lst, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # DGP predictions
+    predictions = f.create_group("predictions")
+    predictions.create_dataset("mean1", data=dgp_mean1_lst)
+    predictions.create_dataset("mean2", data=dgp_mean2_lst)
+    predictions.create_dataset("mean3", data=dgp_mean3_lst)
+    predictions.create_dataset("std1", data=dgp_std1_lst)
+    predictions.create_dataset("std2", data=dgp_std2_lst)
+    predictions.create_dataset("std3", data=dgp_std3_lst)

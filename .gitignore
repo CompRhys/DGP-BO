@@ -38,3 +38,12 @@ htmlcov/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Data
+*.h5
+*.mat
+*.csv
+*.json
+*.yaml
+*.yml
+*.jsonl

@@ -1,13 +1,14 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "dgp-bo"
 version = "0.1.0"
 description = "DGP Bayesian Optimization"
 authors = [
-    {name = "sk md ahnaf akif alvi", email = "ahnafalvi@tamu.edu"}
+    {name = "sk md ahnaf akif alvi", email = "ahnafalvi@tamu.edu"},
+    {name = "Rhys Goodall", email = "rgoodall@radical-ai.com"}
 ]
 readme = "README.md"
 requires-python = ">=3.1"
@@ -25,9 +26,8 @@ dependencies = [
   "joblib",
 ]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["dgp_bo"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/dgp_bo"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
