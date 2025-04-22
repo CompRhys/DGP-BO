@@ -11,7 +11,7 @@ from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.gp import ExactGPModel
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
-from dgp_bo.utils import bmft, cft
+from dgp_bo.utils import lookup_in_h5_file
 
 SMOKE_TEST = "CI" in os.environ
 TRAINING_ITERATIONS = 2 if SMOKE_TEST else 500
@@ -41,8 +41,8 @@ x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 
 
 x2 = x1
-y1 = bmft(x1, TEC_FILENAME)
-y2 = cft(x1, MOR_FILENAME)
+y1 = lookup_in_h5_file(x1, TEC_FILENAME, "tec")
+y2 = lookup_in_h5_file(x1, MOR_FILENAME, "bulkmodul_eq")
 
 likelihood1 = gpytorch.likelihoods.GaussianLikelihood(
     noise_constraint=gpytorch.constraints.Interval(0.001, 10)
@@ -210,14 +210,14 @@ for _k in range(BO_ITERATIONS):
     x_star = np.argmax(ehvi)
     new_x = test_x.detach()[x_star]
 
-    new_y1 = bmft(new_x.unsqueeze(0), TEC_FILENAME)
+    new_y1 = lookup_in_h5_file(new_x.unsqueeze(0), TEC_FILENAME, "tec")
     data_x = np.concatenate((x1.numpy(), new_x.unsqueeze(0).numpy()), axis=0)
     data_y = np.concatenate((y1, new_y1.numpy()), axis=0)
 
     x1 = torch.tensor(data_x)
     y1 = torch.tensor(data_y)
 
-    new_y2 = cft(new_x.unsqueeze(0), MOR_FILENAME)
+    new_y2 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
     data_x = np.concatenate((x2.numpy(), new_x.unsqueeze(0).numpy()), axis=0)
     data_y = np.concatenate((y2, new_y2.numpy()), axis=0)
 

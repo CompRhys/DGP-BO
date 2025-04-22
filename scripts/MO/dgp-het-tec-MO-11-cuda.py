@@ -14,7 +14,7 @@ from dgp_bo.acquisitions import upper_conf_bound
 from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.mtdgp import MultitaskHetDeepGP
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
-from dgp_bo.utils import bmft, c2ft, cft
+from dgp_bo.utils import lookup_in_h5_file
 
 # %%
 SMOKE_TEST = "CI" in os.environ
@@ -40,9 +40,9 @@ train_x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 train_x2 = train_x1
 train_x3 = train_x1
 
-train_y1 = bmft(train_x1, TEC_FILENAME)
-train_y2 = cft(train_x2, MOR_FILENAME)
-train_y3 = c2ft(train_x3, MOR_FILENAME)
+train_y1 = lookup_in_h5_file(train_x1, TEC_FILENAME, "tec")
+train_y2 = lookup_in_h5_file(train_x2, MOR_FILENAME, "bulkmodul_eq")
+train_y3 = lookup_in_h5_file(train_x3, MOR_FILENAME, "volume_eq")
 
 train_i_task1 = torch.full((train_x1.shape[0], 1), dtype=torch.long, fill_value=0)
 train_i_task2 = torch.full((train_x2.shape[0], 1), dtype=torch.long, fill_value=1)
@@ -237,9 +237,9 @@ for k in range(BO_ITERATIONS):
         x_star = np.argmax(ehvi)
 
         new_x = test_x.detach()[x_star]
-        new_y = bmft(new_x.unsqueeze(0), TEC_FILENAME)
-        new_y2 = cft(new_x.unsqueeze(0), MOR_FILENAME)
-        new_y3 = c2ft(new_x.unsqueeze(0), MOR_FILENAME)
+        new_y = lookup_in_h5_file(new_x.unsqueeze(0), TEC_FILENAME, "tec")
+        new_y2 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
+        new_y3 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "volume_eq")
 
         data_x = np.concatenate(
             (train_x1.detach().cpu().numpy(), np.array([new_x.cpu().numpy()])), axis=0
@@ -304,8 +304,8 @@ for k in range(BO_ITERATIONS):
         new_x2 = test_x.detach()[x_star2]
         new_x3 = test_x.detach()[x_star3]
 
-        new_y2 = cft(new_x2.unsqueeze(0))
-        new_y3 = c2ft(new_x3.unsqueeze(0))
+        new_y2 = lookup_in_h5_file(new_x2.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
+        new_y3 = lookup_in_h5_file(new_x3.unsqueeze(0), MOR_FILENAME, "volume_eq")
 
         data_x = np.concatenate(
             (train_x2.detach().cpu().numpy(), np.array([new_x2.cpu().numpy()])), axis=0

@@ -13,7 +13,7 @@ from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.mtdgp import MultitaskIsoDeepGP
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
-from dgp_bo.utils import bmft, c2ft, cft
+from dgp_bo.utils import lookup_in_h5_file
 
 SMOKE_TEST = "CI" in os.environ
 TRAINING_ITERATIONS = 2 if SMOKE_TEST else 500
@@ -43,9 +43,9 @@ x2 = x1
 x3 = x1
 
 
-y1 = bmft(x1, TEC_FILENAME)
-y2 = cft(x2, MOR_FILENAME)
-y3 = c2ft(x3, MOR_FILENAME)
+y1 = lookup_in_h5_file(x1, TEC_FILENAME, "tec")
+y2 = lookup_in_h5_file(x2, MOR_FILENAME, "bulkmodul_eq")
+y3 = lookup_in_h5_file(x3, MOR_FILENAME, "volume_eq")
 
 y1 = torch.stack(
     [
@@ -152,9 +152,9 @@ for _k in range(BO_ITERATIONS):
     x_star = np.argmax(ehvi)
 
     new_x = test_x.detach()[x_star]
-    new_y = bmft(new_x.unsqueeze(0), TEC_FILENAME)
-    new_y2 = cft(new_x.unsqueeze(0), MOR_FILENAME)
-    new_y3 = c2ft(new_x.unsqueeze(0), MOR_FILENAME)
+    new_y = lookup_in_h5_file(new_x.unsqueeze(0), TEC_FILENAME, "tec")
+    new_y2 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
+    new_y3 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "volume_eq")
 
     data_x = np.concatenate((x1.detach().numpy(), np.array([new_x.numpy()])), axis=0)
     data_y = np.concatenate((y1[:, 0].detach().numpy(), new_y.numpy()), axis=0)

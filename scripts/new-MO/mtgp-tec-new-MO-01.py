@@ -12,7 +12,7 @@ from dgp_bo import DATA_DIR
 from dgp_bo.dirichlet import dirichlet5D
 from dgp_bo.mtgp import MultitaskGPModel
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
-from dgp_bo.utils import bmft, c2ft, cft
+from dgp_bo.utils import lookup_in_h5_file
 
 SMOKE_TEST = "CI" in os.environ
 TRAINING_ITERATIONS = 2 if SMOKE_TEST else 500
@@ -37,9 +37,9 @@ train_x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 train_x2 = train_x1
 train_x3 = train_x1
 
-train_y1 = bmft(train_x1, TEC_FILENAME)
-train_y2 = cft(train_x2, MOR_FILENAME)
-train_y3 = c2ft(train_x3, MOR_FILENAME)
+train_y1 = lookup_in_h5_file(train_x1, TEC_FILENAME, "tec")
+train_y2 = lookup_in_h5_file(train_x2, MOR_FILENAME, "bulkmodul_eq")
+train_y3 = lookup_in_h5_file(train_x3, MOR_FILENAME, "volume_eq")
 
 likelihood = gpytorch.likelihoods.GaussianLikelihood(
     noise_constraint=gpytorch.constraints.Interval(0.001, 10)
@@ -143,18 +143,20 @@ for _k in range(BO_ITERATIONS):
 
     new_x = test_x.detach()[x_star]
     test_x = torch.cat((test_x[:x_star], test_x[x_star + 1 :]))
-    new_y = cft(new_x.unsqueeze(0))
-    new_y2 = c2ft(new_x.unsqueeze(0))
+    new_y = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
+    new_y2 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "volume_eq")
 
     data_x = np.concatenate((train_x2.numpy(), new_x.unsqueeze(0).numpy()), axis=0)
     data_y = np.concatenate((train_y2, new_y.numpy()), axis=0)
     train_x2 = torch.tensor(data_x)
     train_y2 = torch.tensor(data_y)
+
     data_x = np.concatenate((train_x3.numpy(), new_x.unsqueeze(0).numpy()), axis=0)
     data_y = np.concatenate((train_y3, new_y2.numpy()), axis=0)
     train_x3 = torch.tensor(data_x)
     train_y3 = torch.tensor(data_y)
-    new_y1 = bmft(new_x.unsqueeze(0), TEC_FILENAME)
+
+    new_y1 = lookup_in_h5_file(new_x.unsqueeze(0), TEC_FILENAME, "tec")
     data_x = np.concatenate((train_x1.numpy(), new_x.unsqueeze(0).numpy()), axis=0)
     data_y = np.concatenate((train_y1, new_y1.numpy()), axis=0)
     train_x1 = torch.tensor(data_x)
