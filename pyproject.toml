@@ -10,11 +10,19 @@ authors = [
     {name = "sk md ahnaf akif alvi", email = "ahnafalvi@tamu.edu"}
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.1"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy>=2,<3",
+  "pandas",
+  "gpytorch",
+  "scipy",
+  "torch",
+  "joblib",
 ]
 
 [tool.setuptools]

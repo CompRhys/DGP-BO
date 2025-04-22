@@ -363,9 +363,9 @@ for k in range(2):
         x_star = np.argmax(ehvi)
 
         new_x = test_x.detach()[x_star]
-        new_y = bmft(new_x.unsqueeze(0))
-        new_y2 = cft(new_x.unsqueeze(0))
-        new_y3 = c2ft(new_x.unsqueeze(0))
+        new_y = bmft(new_x.unsqueeze(0), filename_global2)
+        new_y2 = cft(new_x.unsqueeze(0), filename_global)
+        new_y3 = c2ft(new_x.unsqueeze(0), filename_global)
 
         data_x = np.concatenate(
             (train_x1.detach().cpu().numpy(), np.array([new_x.cpu().numpy()])), axis=0
