@@ -17,7 +17,7 @@ from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import lookup_in_h5_file
 
 # %%
-SMOKE_TEST = "CI" in os.environ
+SMOKE_TEST = True
 TRAINING_ITERATIONS = 2 if SMOKE_TEST else 500
 BO_ITERATIONS = 10 if SMOKE_TEST else 500
 
