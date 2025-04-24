@@ -27,6 +27,7 @@ file_out = os.path.basename(__file__)[:-3]
 MOR_FILENAME = os.path.join(DATA_DIR, "5space-mor.h5")
 TEC_FILENAME = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
+n_input_dims = 5
 n_output_dims = 3
 n_tasks = 3
 
@@ -40,7 +41,7 @@ dgp_std3_lst = []
 ref = np.array([[180, 0]])
 goal = np.array([[0, 1]])
 
-train_x1 = torch.from_numpy((dirichlet5D(2)) / 32)
+train_x1 = torch.from_numpy((dirichlet5D(2)) / 32).to(dtype=torch.float32)
 train_x2 = train_x1
 train_x3 = train_x1
 
@@ -56,7 +57,7 @@ full_train_i = torch.cat([train_i_task1, train_i_task2, train_i_task3])
 full_train_x = torch.cat([train_x1, train_x2, train_x3])
 full_train_y = torch.cat([train_y1, train_y2, train_y3])
 
-model = MultitaskHetDeepGP(train_x1.shape, n_output_dims, n_tasks)
+model = MultitaskHetDeepGP(n_input_dims, n_output_dims, n_tasks)
 likelihood = model.likelihood
 
 model.train()
@@ -67,7 +68,7 @@ mll = DeepApproximateMLL(
 
 for _i in range(TRAINING_ITERATIONS):
     optimizer.zero_grad()
-    output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1))
+    output = model(full_train_x, task_indices=full_train_i.squeeze(-1))
     loss = -mll(output, full_train_y)
     loss.backward()
     optimizer.step()
@@ -97,7 +98,7 @@ for k in tqdm.tqdm(range(BO_ITERATIONS)):
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
 
-    test_x = torch.from_numpy((dirichlet5D(500)) / 32)
+    test_x = torch.from_numpy((dirichlet5D(500)) / 32).to(dtype=torch.float32)
     for i in range(int(test_x.shape[0] / 5)):
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             ind = i * 5
@@ -114,13 +115,13 @@ for k in tqdm.tqdm(range(BO_ITERATIONS)):
                 )
 
                 observed_pred_y1 = model.likelihood(
-                    model(test_xt.float(), task_indices=test_i_task1.squeeze(1))
+                    model(test_xt, task_indices=test_i_task1.squeeze(1))
                 )
                 observed_pred_y2 = model.likelihood(
-                    model(test_xt.float(), task_indices=test_i_task2.squeeze(1))
+                    model(test_xt, task_indices=test_i_task2.squeeze(1))
                 )
                 observed_pred_y3 = model.likelihood(
-                    model(test_xt.float(), task_indices=test_i_task3.squeeze(1))
+                    model(test_xt, task_indices=test_i_task3.squeeze(1))
                 )
 
                 lower1, upper1 = observed_pred_y1.confidence_region()
@@ -151,13 +152,13 @@ for k in tqdm.tqdm(range(BO_ITERATIONS)):
                 )
 
                 observed_pred_y1 = model.likelihood(
-                    model(test_xt.float(), task_indices=test_i_task1.squeeze(1))
+                    model(test_xt, task_indices=test_i_task1.squeeze(1))
                 )
                 observed_pred_y2 = model.likelihood(
-                    model(test_xt.float(), task_indices=test_i_task2.squeeze(1))
+                    model(test_xt, task_indices=test_i_task2.squeeze(1))
                 )
                 observed_pred_y3 = model.likelihood(
-                    model(test_xt.float(), task_indices=test_i_task3.squeeze(1))
+                    model(test_xt, task_indices=test_i_task3.squeeze(1))
                 )
 
                 lower1, upper1 = observed_pred_y1.confidence_region()
@@ -185,13 +186,13 @@ for k in tqdm.tqdm(range(BO_ITERATIONS)):
         test_i_task3 = torch.full((test_xt.shape[0], 1), dtype=torch.long, fill_value=2)
 
         observed_pred_y1 = model.likelihood(
-            model(test_xt.float(), task_indices=test_i_task1.squeeze(1))
+            model(test_xt, task_indices=test_i_task1.squeeze(1))
         )
         observed_pred_y2 = model.likelihood(
-            model(test_xt.float(), task_indices=test_i_task2.squeeze(1))
+            model(test_xt, task_indices=test_i_task2.squeeze(1))
         )
         observed_pred_y3 = model.likelihood(
-            model(test_xt.float(), task_indices=test_i_task3.squeeze(1))
+            model(test_xt, task_indices=test_i_task3.squeeze(1))
         )
 
         lower1, upper1 = observed_pred_y1.confidence_region()
@@ -333,7 +334,7 @@ for k in tqdm.tqdm(range(BO_ITERATIONS)):
     full_train_x = torch.cat([train_x1, train_x2, train_x3])
     full_train_y = torch.cat([train_y1, train_y2, train_y3])
 
-    model = MultitaskHetDeepGP(train_x1.shape, n_output_dims, n_tasks)
+    model = MultitaskHetDeepGP(n_input_dims, n_output_dims, n_tasks)
     likelihood = model.likelihood
 
     model.train()
@@ -343,7 +344,7 @@ for k in tqdm.tqdm(range(BO_ITERATIONS)):
     )
     for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
-        output = model(full_train_x.float(), task_indices=full_train_i.squeeze(-1))
+        output = model(full_train_x, task_indices=full_train_i.squeeze(-1))
         loss = -mll(output, full_train_y)
         loss.backward()
         optimizer.step()

@@ -98,7 +98,7 @@ for _k in tqdm.tqdm(range(BO_ITERATIONS)):
     likelihood_tec.eval()
 
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        observed_pred_tec = likelihood_tec(model_tec(sampled_x.float()))
+        observed_pred_tec = likelihood_tec(model_tec(sampled_x))
         lower_tec, upper_tec = observed_pred_tec.confidence_region()
         mean_tec = observed_pred_tec.mean.detach()
         var_tec = (upper_tec.detach() - mean_tec) / 2
@@ -107,7 +107,7 @@ for _k in tqdm.tqdm(range(BO_ITERATIONS)):
     likelihood_bulk.eval()
 
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
-        observed_pred_bulk = likelihood_bulk(model_bulk(sampled_x.float()))
+        observed_pred_bulk = likelihood_bulk(model_bulk(sampled_x))
         lower_bulk, upper_bulk = observed_pred_bulk.confidence_region()
         mean_bulk = observed_pred_bulk.mean.detach()
         var_bulk = (upper_bulk.detach() - mean_bulk) / 2

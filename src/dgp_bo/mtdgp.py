@@ -84,13 +84,13 @@ class DGPHiddenLayer(DeepGPLayer):
 
 
 class MultitaskHetDeepGP(DeepGP):
-    def __init__(self, train_x_shape, n_output_dims, n_tasks):
+    def __init__(self, n_input_dims, n_output_dims, n_tasks):
         super().__init__()
 
         self.hidden_layer = DGPHiddenLayer(
-            input_dims=train_x_shape[-1], output_dims=n_output_dims, linear_mean=True
+            input_dims=n_input_dims, output_dims=n_output_dims, linear_mean=True
         )
-        self.last_layer = DGPLastLayer(n_latents=train_x_shape[-1] * 2, n_tasks=n_tasks)
+        self.last_layer = DGPLastLayer(n_latents=n_input_dims * 2, n_tasks=n_tasks)
 
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood(
             num_tasks=n_tasks, noise_constraint=gpytorch.constraints.Interval(0.001, 10)
@@ -117,11 +117,11 @@ class MultitaskHetDeepGP(DeepGP):
 
 
 class MultitaskIsoDeepGP(DeepGP):
-    def __init__(self, train_x_shape, n_output_dims, n_tasks):
+    def __init__(self, n_input_dims, n_output_dims, n_tasks):
         super().__init__()
 
         self.hidden_layer = DGPHiddenLayer(
-            input_dims=train_x_shape[-1],
+            input_dims=n_input_dims,
             output_dims=n_output_dims,
             linear_mean=True,
         )
@@ -131,7 +131,7 @@ class MultitaskIsoDeepGP(DeepGP):
             linear_mean=False,
         )
 
-        self.likelihood = gpytorch.likelihoods.GaussianLikelihood(
+        self.likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
             num_tasks=n_tasks, noise_constraint=gpytorch.constraints.Interval(0.001, 10)
         )
 
@@ -139,7 +139,7 @@ class MultitaskIsoDeepGP(DeepGP):
         hidden_rep1 = self.hidden_layer(inputs)
         return self.last_layer(hidden_rep1)
 
-    def predict(self, test_x, task_indices):
+    def predict(self, test_x):
         with torch.no_grad():
             preds = self.likelihood(self.forward(test_x)).to_data_independent_dist()
 

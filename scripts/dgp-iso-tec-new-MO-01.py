@@ -7,6 +7,7 @@ import gpytorch
 import h5py
 import numpy as np
 import torch
+import tqdm.auto as tqdm
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from joblib import Parallel, delayed
 
@@ -26,6 +27,7 @@ MOR_FILENAME = os.path.join(DATA_DIR, "5space-mor.h5")
 TEC_FILENAME = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 num_tasks = 3
+n_input_dims = 5
 n_output_dims = 4
 
 dgp_mean1_lst = []
@@ -38,7 +40,7 @@ dgp_std3_lst = []
 ref = np.array([[180, 0]])
 goal = np.array([[0, 1]])
 
-x1 = torch.from_numpy((dirichlet5D(2)) / 32)
+x1 = torch.from_numpy((dirichlet5D(2)) / 32).to(dtype=torch.float32)
 x2 = x1
 x3 = x1
 
@@ -49,7 +51,7 @@ y3 = lookup_in_h5_file(x3, MOR_FILENAME, "volume_eq")
 
 full_train_y = torch.stack([y1, y2, y3], -1)
 
-model = MultitaskIsoDeepGP(x1.shape, n_output_dims=n_output_dims, n_tasks=num_tasks)
+model = MultitaskIsoDeepGP(n_input_dims, n_output_dims, num_tasks).to(dtype=torch.float32)
 likelihood = model.likelihood
 
 model.train()
@@ -60,8 +62,8 @@ mll = DeepApproximateMLL(
 
 for _i in range(TRAINING_ITERATIONS):
     optimizer.zero_grad()
-    output = model(x1.float())
-    loss = -mll(output, y1)
+    output = model.forward(x1)
+    loss = -mll(output, full_train_y)
 
     loss.backward()
     optimizer.step()
@@ -69,8 +71,8 @@ for _i in range(TRAINING_ITERATIONS):
 model.eval()
 likelihood.eval()
 
-train_y1 = y1[:, 0]
-train_y2 = y1[:, 1]
+train_y1 = full_train_y[:, 0]
+train_y2 = full_train_y[:, 1]
 yp = np.concatenate(
     (train_y1.reshape(train_y1.shape[0], 1), train_y2.reshape(train_y2.shape[0], 1)),
     axis=1,
@@ -85,30 +87,30 @@ hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
 # %%
 test_x = torch.from_numpy((dirichlet5D(500)) / 32)
-for _k in range(BO_ITERATIONS):
+for _k in tqdm.tqdm(range(BO_ITERATIONS)):
     torch.set_flush_denormal(True)
     xi = 0.9
     e = True
     counter2 = 0
 
-    test_x = torch.from_numpy((dirichlet5D(500)) / 32)
+    test_x = torch.from_numpy((dirichlet5D(500)) / 32).to(dtype=torch.float32)
     for i in range(int(test_x.shape[0] / 5)):
         with torch.no_grad(), gpytorch.settings.fast_pred_var():
             ind = i * 5
             if i == 0:
                 test_xt = test_x[0:5, :]
-                mean, var = model.predict(test_xt.float())
+                mean, var = model.predict(test_xt)
                 mean_t = mean
                 var_t = var
             else:
                 test_xt = test_x[ind : ind + 5, :]
-                mean, var = model.predict(test_xt.float())
+                mean, var = model.predict(test_xt)
                 mean_t = torch.cat((mean_t, mean), 0)
                 var_t = torch.cat((var_t, var), 0)
 
     test_xt = test_x[ind + 5 :, :]
     if test_xt.numel() != 0:
-        mean, var = model.predict(test_xt.float())
+        mean, var = model.predict(test_xt)
         mean_t = torch.cat((mean_t, mean), 0)
         var_t = torch.cat((var_t, var), 0)
 
@@ -149,14 +151,14 @@ for _k in range(BO_ITERATIONS):
     new_y3 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "volume_eq")
 
     data_x = np.concatenate((x1.detach().numpy(), np.array([new_x.numpy()])), axis=0)
-    data_y = np.concatenate((y1[:, 0].detach().numpy(), new_y.numpy()), axis=0)
+    data_y = np.concatenate((full_train_y[:, 0].detach().numpy(), new_y.numpy()), axis=0)
 
     x1_t = torch.tensor(data_x)
     train_y2_t = torch.tensor(data_y)
-    data_y = np.concatenate((y1[:, 1].detach().numpy(), new_y2.numpy()), axis=0)
+    data_y = np.concatenate((full_train_y[:, 1].detach().numpy(), new_y2.numpy()), axis=0)
 
     train_y3_t = torch.tensor(data_y)
-    data_y = np.concatenate((y1[:, 2].detach().numpy(), new_y3.numpy()), axis=0)
+    data_y = np.concatenate((full_train_y[:, 2].detach().numpy(), new_y3.numpy()), axis=0)
 
     train_y4_t = torch.tensor(data_y)
 
@@ -186,7 +188,9 @@ for _k in range(BO_ITERATIONS):
     y_pareto_truth, ind = Pareto_finder(data_yp, goal)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
     hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
-    model = MultitaskIsoDeepGP(x1.shape, n_output_dims=n_output_dims, n_tasks=num_tasks)
+    model = MultitaskIsoDeepGP(n_input_dims, n_output_dims, num_tasks).to(
+        dtype=torch.float32
+    )
     likelihod = model.likelihood
 
     model.train()
@@ -196,29 +200,33 @@ for _k in range(BO_ITERATIONS):
 
     for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
-        output = model(x1_t.float())
+        output = model(x1_t)
         loss = -mll(output, y1_t)
 
         loss.backward()
         optimizer.step()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
-    mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
+    mll = DeepApproximateMLL(
+        VariationalELBO(likelihood, model, num_data=full_train_y.size(0))
+    )
 
     for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
-        output = model(x1_t.float())
+        output = model(x1_t)
         loss = -mll(output, y1_t)
 
         loss.backward()
         optimizer.step()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
-    mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
+    mll = DeepApproximateMLL(
+        VariationalELBO(likelihood, model, num_data=full_train_y.size(0))
+    )
 
     for _i in range(TRAINING_ITERATIONS):
         optimizer.zero_grad()
-        output = model(x1_t.float())
+        output = model(x1_t)
         loss = -mll(output, y1_t)
 
         loss.backward()
@@ -226,7 +234,7 @@ for _k in range(BO_ITERATIONS):
         e = False
 
     x1 = deepcopy(x1_t)
-    y1 = deepcopy(y1_t)
+    full_train_y = deepcopy(y1_t)
     train_y2 = deepcopy(train_y2_t)
     train_y3 = deepcopy(train_y3_t)
     train_y4 = deepcopy(train_y4_t)
