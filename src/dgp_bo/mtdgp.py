@@ -49,7 +49,7 @@ class DGPLastLayer(gpytorch.models.ApproximateGP):
 
 
 class DGPHiddenLayer(DeepGPLayer):
-    def __init__(self, input_dims, output_dims, num_inducing=128, linear_mean=True):
+    def __init__(self, input_dims, output_dims, num_inducing=64, linear_mean=True):
         inducing_points = torch.randn(output_dims, num_inducing, input_dims)
         batch_shape = torch.Size([output_dims])
 
@@ -72,7 +72,7 @@ class DGPHiddenLayer(DeepGPLayer):
                 batch_shape=batch_shape,
                 ard_num_dims=input_dims,
                 lengthscale_constraint=gpytorch.constraints.Interval(0.2, 0.8),
-            ),  # ,lengthscale_constraint=gpytorch.constraints.Interval(0.3, 0.8)
+            ),
             batch_shape=batch_shape,
             ard_num_dims=None,
         )
@@ -85,15 +85,12 @@ class DGPHiddenLayer(DeepGPLayer):
 
 class MultitaskHetDeepGP(DeepGP):
     def __init__(self, train_x_shape, n_output_dims, n_tasks):
-        hidden_layer = DGPHiddenLayer(
-            input_dims=train_x_shape[-1], output_dims=n_output_dims, linear_mean=True
-        )
-        last_layer = DGPLastLayer(n_latents=n_output_dims, n_tasks=n_tasks)
-
         super().__init__()
 
-        self.hidden_layer = hidden_layer
-        self.last_layer = last_layer
+        self.hidden_layer = DGPHiddenLayer(
+            input_dims=train_x_shape[-1], output_dims=n_output_dims, linear_mean=True
+        )
+        self.last_layer = DGPLastLayer(n_latents=train_x_shape[-1] * 2, n_tasks=n_tasks)
 
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood(
             num_tasks=n_tasks, noise_constraint=gpytorch.constraints.Interval(0.001, 10)
@@ -121,39 +118,29 @@ class MultitaskHetDeepGP(DeepGP):
 
 class MultitaskIsoDeepGP(DeepGP):
     def __init__(self, train_x_shape, n_output_dims, n_tasks):
-        hidden_layer = DGPHiddenLayer(
-            input_dims=train_x_shape[-1], output_dims=n_output_dims, linear_mean=True
+        super().__init__()
+
+        self.hidden_layer = DGPHiddenLayer(
+            input_dims=train_x_shape[-1],
+            output_dims=n_output_dims,
+            linear_mean=True,
         )
-        last_layer = DGPHiddenLayer(
-            input_dims=hidden_layer.output_dims,
+        self.last_layer = DGPHiddenLayer(
+            input_dims=self.hidden_layer.output_dims,
             output_dims=n_tasks,
             linear_mean=False,
         )
-
-        super().__init__()
-
-        self.hidden_layer = hidden_layer
-        self.last_layer = last_layer
 
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood(
             num_tasks=n_tasks, noise_constraint=gpytorch.constraints.Interval(0.001, 10)
         )
 
-    def forward(self, inputs, task_indices):
-        task_indices1 = (
-            torch.from_numpy(np.ones(inputs.shape[0], dtype=int) * 1).long()
-            * task_indices
-        )
+    def forward(self, inputs):
         hidden_rep1 = self.hidden_layer(inputs)
-        return self.last_layer(
-            torch.distributions.Normal(
-                loc=hidden_rep1.mean, scale=hidden_rep1.variance.sqrt()
-            ).rsample(),
-            task_indices=task_indices1,
-        )
+        return self.last_layer(hidden_rep1)
 
     def predict(self, test_x, task_indices):
         with torch.no_grad():
-            preds = self.likelihood(self.forward(test_x, task_indices=task_indices))
+            preds = self.likelihood(self.forward(test_x)).to_data_independent_dist()
 
-        return preds.mean, preds.variance
+        return preds.mean.mean(0), preds.variance.mean(0)

@@ -6,6 +6,7 @@ import gpytorch
 import h5py
 import numpy as np
 import torch
+import tqdm.auto as tqdm
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from joblib import Parallel, delayed
 
@@ -26,6 +27,9 @@ file_out = os.path.basename(__file__)[:-3]
 MOR_FILENAME = os.path.join(DATA_DIR, "5space-mor.h5")
 TEC_FILENAME = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
+n_output_dims = 3
+n_tasks = 3
+
 dgp_mean1_lst = []
 dgp_mean2_lst = []
 dgp_mean3_lst = []
@@ -33,8 +37,8 @@ dgp_std1_lst = []
 dgp_std2_lst = []
 dgp_std3_lst = []
 
-ref = np.array([[0, 0]])
-goal = np.array([[1, 1]])
+ref = np.array([[180, 0]])
+goal = np.array([[0, 1]])
 
 train_x1 = torch.from_numpy((dirichlet5D(2)) / 32)
 train_x2 = train_x1
@@ -52,9 +56,8 @@ full_train_i = torch.cat([train_i_task1, train_i_task2, train_i_task3])
 full_train_x = torch.cat([train_x1, train_x2, train_x3])
 full_train_y = torch.cat([train_y1, train_y2, train_y3])
 
-model = MultitaskHetDeepGP(train_x1.shape)
+model = MultitaskHetDeepGP(train_x1.shape, n_output_dims, n_tasks)
 likelihood = model.likelihood
-
 
 model.train()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
@@ -80,17 +83,17 @@ yp = np.concatenate(
     axis=1,
 )
 yp_query = yp.reshape(train_y1t.shape[0], 2)
+
 data_yp = yp_query
-
-
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 train_y1t = torch.tensor(train_y1t)
 train_y2t = torch.tensor(train_y2t)
 
-for k in range(BO_ITERATIONS):
-    xi = 0.3
 
+# %%
+for k in tqdm.tqdm(range(BO_ITERATIONS)):
+    xi = 0.3
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
 
@@ -208,6 +211,7 @@ for k in range(BO_ITERATIONS):
         var3 = (upper3.detach() - mean3) / 2
         mean_t3 = torch.cat((mean_t3, mean3), 0)
         var_t3 = torch.cat((var_t3, var3), 0)
+
     dgp_mean1_lst.append(mean_t1.cpu().numpy())
     dgp_mean2_lst.append(mean_t2.cpu().numpy())
     dgp_mean3_lst.append(mean_t3.cpu().numpy())
@@ -235,7 +239,6 @@ for k in range(BO_ITERATIONS):
         ehvi = np.array(ehvi)
 
         x_star = np.argmax(ehvi)
-
         new_x = test_x.detach()[x_star]
         new_y = lookup_in_h5_file(new_x.unsqueeze(0), TEC_FILENAME, "tec")
         new_y2 = lookup_in_h5_file(new_x.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
@@ -303,10 +306,8 @@ for k in range(BO_ITERATIONS):
 
         new_x2 = test_x.detach()[x_star2]
         new_x3 = test_x.detach()[x_star3]
-
         new_y2 = lookup_in_h5_file(new_x2.unsqueeze(0), MOR_FILENAME, "bulkmodul_eq")
         new_y3 = lookup_in_h5_file(new_x3.unsqueeze(0), MOR_FILENAME, "volume_eq")
-
         data_x = np.concatenate(
             (train_x2.detach().cpu().numpy(), np.array([new_x2.cpu().numpy()])), axis=0
         )
@@ -332,7 +333,7 @@ for k in range(BO_ITERATIONS):
     full_train_x = torch.cat([train_x1, train_x2, train_x3])
     full_train_y = torch.cat([train_y1, train_y2, train_y3])
 
-    model = MultitaskHetDeepGP(train_x1.shape)
+    model = MultitaskHetDeepGP(train_x1.shape, n_output_dims, n_tasks)
     likelihood = model.likelihood
 
     model.train()

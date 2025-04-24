@@ -1,3 +1,4 @@
+# %%
 import multiprocessing
 import os
 
@@ -5,6 +6,7 @@ import gpytorch
 import h5py
 import numpy as np
 import torch
+import tqdm.auto as tqdm
 from gpytorch import settings
 from joblib import Parallel, delayed
 
@@ -14,6 +16,7 @@ from dgp_bo.mtgp import MultitaskGPModel
 from dgp_bo.multiobjective import EHVI, HV_Calc, Pareto_finder
 from dgp_bo.utils import lookup_in_h5_file
 
+# %%
 SMOKE_TEST = "CI" in os.environ
 TRAINING_ITERATIONS = 2 if SMOKE_TEST else 500
 BO_ITERATIONS = 10 if SMOKE_TEST else 500
@@ -83,8 +86,9 @@ y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
 
+# %%
 test_x = torch.from_numpy((dirichlet5D(500)) / 32)
-for _k in range(BO_ITERATIONS):
+for _k in tqdm.tqdm(range(BO_ITERATIONS)):
     torch.cuda.empty_cache()
     torch.set_flush_denormal(True)
     xi = 0.9

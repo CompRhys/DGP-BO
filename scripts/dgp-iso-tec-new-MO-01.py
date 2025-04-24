@@ -1,3 +1,4 @@
+# %%
 import multiprocessing
 import os
 from copy import deepcopy
@@ -25,8 +26,7 @@ MOR_FILENAME = os.path.join(DATA_DIR, "5space-mor.h5")
 TEC_FILENAME = os.path.join(DATA_DIR, "5space-md16-tec-new.h5")
 
 num_tasks = 3
-num_hidden_dgp_dims = 3
-# num_hidden_dgp_dims2 = 3
+n_output_dims = 4
 
 dgp_mean1_lst = []
 dgp_mean2_lst = []
@@ -47,24 +47,16 @@ y1 = lookup_in_h5_file(x1, TEC_FILENAME, "tec")
 y2 = lookup_in_h5_file(x2, MOR_FILENAME, "bulkmodul_eq")
 y3 = lookup_in_h5_file(x3, MOR_FILENAME, "volume_eq")
 
-y1 = torch.stack(
-    [
-        y1,
-        y2,
-        y3,
-    ],
-    -1,
-)
+full_train_y = torch.stack([y1, y2, y3], -1)
 
-num_tasks = 3
-num_hidden_dgp_dims = 4
-
-model = MultitaskIsoDeepGP(x1.shape)
+model = MultitaskIsoDeepGP(x1.shape, n_output_dims=n_output_dims, n_tasks=num_tasks)
 likelihood = model.likelihood
 
 model.train()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-mll = DeepApproximateMLL(VariationalELBO(likelihood, model, num_data=y1.size(0)))
+mll = DeepApproximateMLL(
+    VariationalELBO(likelihood, model, num_data=full_train_y.size(0))
+)
 
 for _i in range(TRAINING_ITERATIONS):
     optimizer.zero_grad()
@@ -90,6 +82,8 @@ data_yp = yp_query
 y_pareto_truth, ind = Pareto_finder(data_yp, goal)
 hv_truth = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
 
+
+# %%
 test_x = torch.from_numpy((dirichlet5D(500)) / 32)
 for _k in range(BO_ITERATIONS):
     torch.set_flush_denormal(True)
@@ -176,9 +170,9 @@ for _k in range(BO_ITERATIONS):
     )
 
     train_y1 = y1_t[:, 0]
-
     train_y2 = y1_t[:, 1]
     train_y3 = y1_t[:, 2]
+
     yp = np.concatenate(
         (
             train_y1.reshape(train_y1.shape[0], 1),
@@ -192,7 +186,7 @@ for _k in range(BO_ITERATIONS):
     y_pareto_truth, ind = Pareto_finder(data_yp, goal)
     hv_t = (HV_Calc(goal, ref, y_pareto_truth)).reshape(1, 1)
     hv_truth = np.concatenate((hv_truth, hv_t.reshape(1, 1)))
-    model = MultitaskIsoDeepGP(x1_t.shape)
+    model = MultitaskIsoDeepGP(x1.shape, n_output_dims=n_output_dims, n_tasks=num_tasks)
     likelihod = model.likelihood
 
     model.train()
